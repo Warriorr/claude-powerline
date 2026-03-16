@@ -34,6 +34,28 @@ export const SYMBOLS = {
   env: "⚙",
 } as const;
 
+export const BOX_CHARS = {
+  topLeft: "╭",
+  topRight: "╮",
+  bottomLeft: "╰",
+  bottomRight: "╯",
+  horizontal: "─",
+  vertical: "│",
+  teeLeft: "├",
+  teeRight: "┤",
+} as const;
+
+export const BOX_CHARS_TEXT = {
+  topLeft: "+",
+  topRight: "+",
+  bottomLeft: "+",
+  bottomRight: "+",
+  horizontal: "-",
+  vertical: "|",
+  teeLeft: "+",
+  teeRight: "+",
+} as const;
+
 export const TEXT_SYMBOLS = {
   right: "\uE0B0",
   left_rounded: "\uE0B6",

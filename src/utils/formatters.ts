@@ -90,3 +90,32 @@ export function formatModelName(rawName: string): string {
 
   return rawName;
 }
+
+export function abbreviateFishStyle(dirPath: string): string {
+  const sep = dirPath.includes("/") ? "/" : "\\";
+  const parts = dirPath.split(sep);
+  return parts
+    .map((part, index) => {
+      if (index === parts.length - 1) {
+        return part;
+      }
+      if (part === "~" || part === "") {
+        return part;
+      }
+      return part.charAt(0);
+    })
+    .join(sep);
+}
+
+export function formatResponseTime(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`;
+  }
+  return `${(seconds / 60).toFixed(1)}m`;
+}
+
+export function formatTimeRemaining(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m left` : `${minutes}m left`;
+}

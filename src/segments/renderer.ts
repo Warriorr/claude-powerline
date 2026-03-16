@@ -3,7 +3,7 @@ import type { ClaudeHookData } from "../utils/claude";
 import type { PowerlineColors } from "../themes";
 import type { PowerlineConfig } from "../config/loader";
 import type { BlockInfo } from "./block";
-import { formatModelName } from "../utils/formatters";
+import { formatModelName, abbreviateFishStyle } from "../utils/formatters";
 
 export interface SegmentConfig {
   enabled: boolean;
@@ -194,7 +194,7 @@ export class SegmentRenderer {
     let dirName = this.getDisplayDirectoryName(displayDir, displayProjectDir);
 
     if (style === "fish") {
-      dirName = this.abbreviateFishStyle(dirName);
+      dirName = abbreviateFishStyle(dirName);
     }
 
     return {
@@ -704,17 +704,6 @@ export class SegmentRenderer {
     }
 
     return currentDir;
-  }
-
-  private abbreviateFishStyle(dirPath: string): string {
-    const parts = dirPath.split(path.sep);
-    return parts
-      .map((part, index) => {
-        if (index === parts.length - 1) return part;
-        if (part === "~" || part === "") return part;
-        return part.charAt(0);
-      })
-      .join(path.sep);
   }
 
   private formatUsageDisplay(
