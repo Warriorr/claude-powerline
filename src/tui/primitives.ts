@@ -46,7 +46,9 @@ export function truncateAnsi(text: string, maxWidth: number): string {
 }
 
 export function contentRow(box: BoxChars, content: string, innerWidth: number): string {
-  const padded = padRight(content, innerWidth - 2);
+  const maxContent = innerWidth - 2;
+  const truncated = truncateAnsi(content, maxContent);
+  const padded = padRight(truncated, maxContent);
   return box.vertical + " " + padded + " " + box.vertical;
 }
 
