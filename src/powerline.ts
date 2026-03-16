@@ -33,8 +33,10 @@ import {
 } from "./segments";
 import { BlockProvider, BlockInfo } from "./segments/block";
 import { TodayProvider, TodayInfo } from "./segments/today";
-import { SYMBOLS, TEXT_SYMBOLS, RESET_CODE } from "./utils/constants";
+import { SYMBOLS, TEXT_SYMBOLS, RESET_CODE, BOX_CHARS, BOX_CHARS_TEXT } from "./utils/constants";
 import { getTerminalWidth, visibleLength } from "./utils/terminal";
+import { renderTuiPanel } from "./tui";
+import type { TuiData } from "./tui";
 
 interface RenderedSegment {
   type: string;
@@ -121,6 +123,10 @@ export class PowerlineRenderer {
   }
 
   async generateStatusline(hookData: ClaudeHookData): Promise<string> {
+    if (this.config.display.style === "tui") {
+      return this.generateTuiStatusline(hookData);
+    }
+
     const usageInfo = this.needsSegmentInfo("session")
       ? await this.usageProvider.getUsageInfo(hookData.session_id, hookData)
       : null;
@@ -247,6 +253,43 @@ export class PowerlineRenderer {
     }
 
     return outputLines.join("\n");
+  }
+
+  private async generateTuiStatusline(hookData: ClaudeHookData): Promise<string> {
+    const colors = this.getThemeColors();
+    const terminalWidth = getTerminalWidth();
+    const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
+    const charset = this.config.display.charset || "unicode";
+    const boxChars = charset === "text" ? BOX_CHARS_TEXT : BOX_CHARS;
+    const autocompactBuffer = 33000;
+
+    const [usageInfo, blockInfo, todayInfo, contextInfo, metricsInfo, gitInfo, tmuxSessionId] = await Promise.all([
+      this.usageProvider.getUsageInfo(hookData.session_id, hookData),
+      this.blockProvider.getActiveBlockInfo(),
+      this.todayProvider.getTodayInfo(),
+      this.contextProvider.getContextInfo(hookData, autocompactBuffer),
+      this.metricsProvider.getMetricsInfo(hookData.session_id, hookData),
+      this.gitService.getGitInfo(
+        currentDir,
+        { showSha: false, showWorkingTree: false, showOperation: false, showTag: false, showTimeSinceCommit: false, showStashCount: false, showUpstream: false, showRepoName: false },
+        hookData.workspace?.project_dir,
+      ),
+      this.tmuxService.getSessionId(),
+    ]);
+
+    const tuiData: TuiData = {
+      hookData,
+      usageInfo,
+      blockInfo,
+      todayInfo,
+      contextInfo,
+      metricsInfo,
+      gitInfo,
+      tmuxSessionId,
+      colors,
+    };
+
+    return renderTuiPanel(tuiData, boxChars, colors.reset, terminalWidth, this.config);
   }
 
   private calculateSegmentWidth(segment: RenderedSegment, isFirst: boolean): number {

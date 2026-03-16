@@ -83,7 +83,7 @@ Dark, light, nord, tokyo-night, rose-pine, and gruvbox themes with full custom c
 
 **Multiple styles**
 
-Minimal, powerline, and capsule separators with unicode or ASCII character sets.
+Minimal, powerline, capsule, and TUI panel display with unicode or ASCII character sets.
 
 </td>
 </tr>
@@ -135,7 +135,7 @@ Once added to Claude Code settings, the statusline runs automatically. For custo
 **CLI Options** (both `--arg value` and `--arg=value` syntax supported):
 
 - `--theme` - `dark` (default), `light`, `nord`, `tokyo-night`, `rose-pine`, `gruvbox`, `custom`
-- `--style` - `minimal` (default), `powerline`, `capsule`
+- `--style` - `minimal` (default), `powerline`, `capsule`, `tui`
 - `--charset` - `unicode` (default), `text`
 - `--config` - Custom config file path
 - `--help` - Show help
@@ -160,6 +160,27 @@ export CLAUDE_POWERLINE_DEBUG=1  # Enable debug logging
 ## Styles
 
 <img src="images/claude-powerline-styles.png" alt="Claude Powerline Styles" width="600">
+
+### TUI Panel Mode
+
+The `tui` style renders a bordered panel with all available data in a responsive layout. Unlike other styles, TUI mode is **opinionated**: it always displays all data regardless of segment enable/disable configuration. Only theme, charset, and budget thresholds are respected.
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y @owloops/claude-powerline@latest --style=tui"
+  }
+}
+```
+
+The panel adapts to terminal width across three breakpoints:
+- **Wide** (80+ cols): metrics on one line, workspace and footer spread across columns
+- **Medium** (55-79 cols): metrics split across two lines, stacked footer
+- **Narrow** (<55 cols): fully stacked layout
+
+> [!NOTE]
+> Claude Code's internal progress indicators (spinner, context bar) may briefly overlap the TUI panel during tool calls. This is a limitation of the hook architecture and resolves once the tool call completes.
 
 ## Configuration
 
@@ -488,10 +509,11 @@ Choose between Unicode symbols (requires Nerd Font) or ASCII text mode for maxim
 
 **Combinations with styles:**
 
-The charset setting works independently from separator styles, giving you 6 possible combinations:
+The charset setting works independently from separator styles, giving you 8 possible combinations:
 - `minimal` + `unicode` / `text` - No separators
 - `powerline` + `unicode` / `text` - Arrow separators (requires Nerd Font for unicode)
 - `capsule` + `unicode` / `text` - Rounded caps (requires Nerd Font for unicode)
+- `tui` + `unicode` / `text` - Bordered panel with rounded or ASCII box characters
 
 **CLI Usage:**
 

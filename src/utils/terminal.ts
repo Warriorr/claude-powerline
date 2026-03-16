@@ -83,11 +83,11 @@ function getUnixTerminalWidth(): number | null {
 }
 
 /**
- * @info Returns 80% of terminal width to reserve space for Claude Code's
+ * @info Returns 70% of terminal width to reserve space for Claude Code's
  * right-side UI messages (e.g., "ctrl-g to edit prompt in Nvim", "Thinking off")
  */
 export function getTerminalWidth(): number | null {
-  const applyReserve = (w: number) => Math.floor(w * 0.8);
+  const applyReserve = (w: number) => Math.floor(w * 0.7);
 
   const envColumns = process.env.COLUMNS;
   if (envColumns) {

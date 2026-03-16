@@ -35,7 +35,7 @@ export interface LineConfig {
 
 export interface DisplayConfig {
   lines: LineConfig[];
-  style?: "minimal" | "powerline" | "capsule";
+  style?: "minimal" | "powerline" | "capsule" | "tui";
   charset?: "unicode" | "text";
   colorCompatibility?: "auto" | "ansi" | "ansi256" | "truecolor";
   autoWrap?: boolean;
@@ -76,8 +76,8 @@ function isValidTheme(theme: string): theme is PowerlineConfig["theme"] {
   ].includes(theme);
 }
 
-function isValidStyle(style: string): style is "minimal" | "powerline" | "capsule" {
-  return style === "minimal" || style === "powerline" || style === "capsule";
+function isValidStyle(style: string): style is "minimal" | "powerline" | "capsule" | "tui" {
+  return style === "minimal" || style === "powerline" || style === "capsule" || style === "tui";
 }
 
 function isValidCharset(charset: string): charset is "unicode" | "text" {
