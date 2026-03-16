@@ -54,7 +54,6 @@ export function buildContextLine(
   }
 
   const usedPct = data.contextInfo.usablePercentage;
-  const leftPct = data.contextInfo.contextLeftPercentage;
   const filledCount = Math.round((usedPct / 100) * barLen);
   const emptyCount = barLen - filledCount;
   const bar = sym.bar_filled.repeat(filledCount) + sym.bar_empty.repeat(emptyCount);
@@ -68,13 +67,13 @@ export function buildContextLine(
     : `${data.contextInfo.maxTokens}`;
 
   let fgColor = colors.contextFg;
-  if (leftPct <= 20) {
+  if (usedPct >= 80) {
     fgColor = colors.contextCriticalFg;
-  } else if (leftPct <= 40) {
+  } else if (usedPct >= 60) {
     fgColor = colors.contextWarningFg;
   }
 
-  return colorize(`${bar}  ${leftPct}%  ${tokenStr}/${maxStr}`, fgColor, reset);
+  return colorize(`${bar}  ${usedPct}%  ${tokenStr}/${maxStr}`, fgColor, reset);
 }
 
 function getDirectoryDisplay(hookData: TuiData["hookData"]): string {
