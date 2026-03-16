@@ -7,6 +7,7 @@ import {
   getColorSupport,
   hexToBasicAnsi,
   hexTo256Ansi,
+  hexColorDistance,
 } from "./utils/colors";
 import { getTheme } from "./themes";
 import {
@@ -263,7 +264,7 @@ export class PowerlineRenderer {
     const boxChars = charset === "text" ? BOX_CHARS_TEXT : BOX_CHARS;
     const autocompactBuffer = 33000;
 
-    const [usageInfo, blockInfo, todayInfo, contextInfo, metricsInfo, gitInfo, tmuxSessionId] = await Promise.all([
+    const results = await Promise.allSettled([
       this.usageProvider.getUsageInfo(hookData.session_id, hookData),
       this.blockProvider.getActiveBlockInfo(),
       this.todayProvider.getTodayInfo(),
@@ -276,6 +277,11 @@ export class PowerlineRenderer {
       ),
       this.tmuxService.getSessionId(),
     ]);
+    const val = <T>(r: PromiseSettledResult<T>) => r.status === "fulfilled" ? r.value : null;
+    const [usageInfo, blockInfo, todayInfo, contextInfo, metricsInfo, gitInfo, tmuxSessionId] = [
+      val(results[0]!), val(results[1]!), val(results[2]!), val(results[3]!),
+      val(results[4]!), val(results[5]!), val(results[6]!),
+    ] as const;
 
     const tuiData: TuiData = {
       hookData,
@@ -634,8 +640,16 @@ export class PowerlineRenderer {
 
     const fallbackTheme = getTheme("dark", colorSupport)!;
 
-    const getSegmentColors = (segment: keyof ColorTheme) => {
+    const isTui = this.config.display.style === "tui";
+    const DARK_TERMINAL_REF = "#1e1e1e";
+
+    const getSegmentColors = (segment: Exclude<keyof ColorTheme, "tui">) => {
       const colors = colorTheme[segment] || fallbackTheme[segment];
+
+      let fgHex = colors.fg;
+      if (isTui && hexColorDistance(fgHex, DARK_TERMINAL_REF) < 60) {
+        fgHex = colors.bg;
+      }
 
       if (colorSupport === "none") {
         return {
@@ -645,17 +659,17 @@ export class PowerlineRenderer {
       } else if (colorSupport === "ansi") {
         return {
           bg: hexToBasicAnsi(colors.bg, true),
-          fg: hexToBasicAnsi(colors.fg, false),
+          fg: hexToBasicAnsi(fgHex, false),
         };
       } else if (colorSupport === "ansi256") {
         return {
           bg: hexTo256Ansi(colors.bg, true),
-          fg: hexTo256Ansi(colors.fg, false),
+          fg: hexTo256Ansi(fgHex, false),
         };
       } else {
         return {
           bg: hexToAnsi(colors.bg, true),
-          fg: hexToAnsi(colors.fg, false),
+          fg: hexToAnsi(fgHex, false),
         };
       }
     };
