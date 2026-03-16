@@ -66,15 +66,24 @@ export function spreadEven(parts: string[], totalWidth: number): string {
     return parts[0] ?? "";
   }
 
-  const totalContentWidth = parts.reduce((sum, p) => sum + visibleLength(p), 0);
+  const widths = parts.map((p) => visibleLength(p));
+  const totalContentWidth = widths.reduce((sum, w) => sum + w, 0);
   const totalGap = totalWidth - totalContentWidth;
   const gapPerSlot = Math.max(2, Math.floor(totalGap / (parts.length - 1)));
 
+  const suffixWidths = new Array<number>(parts.length);
+  suffixWidths[parts.length - 1] = widths[parts.length - 1] ?? 0;
+  for (let i = parts.length - 2; i >= 0; i--) {
+    suffixWidths[i] = (suffixWidths[i + 1] ?? 0) + (widths[i] ?? 0);
+  }
+
   let result = parts[0] ?? "";
+  let usedWidth = widths[0] ?? 0;
   for (let i = 1; i < parts.length; i++) {
-    const remaining = totalWidth - visibleLength(result) - parts.slice(i).reduce((s, p) => s + visibleLength(p), 0) - (parts.length - 1 - i) * 2;
+    const remaining = totalWidth - usedWidth - (suffixWidths[i] ?? 0) - (parts.length - 1 - i) * 2;
     const gap = Math.max(2, Math.min(gapPerSlot, remaining));
     result += " ".repeat(gap) + (parts[i] ?? "");
+    usedWidth += gap + (widths[i] ?? 0);
   }
 
   return result;
