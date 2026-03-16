@@ -262,7 +262,10 @@ export class PowerlineRenderer {
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
     const charset = this.config.display.charset || "unicode";
     const boxChars = charset === "text" ? BOX_CHARS_TEXT : BOX_CHARS;
-    const autocompactBuffer = 33000;
+    const contextSegmentConfig = this.config.display.lines
+      .map((line) => line.segments.context)
+      .find((c) => c?.enabled) as ContextSegmentConfig | undefined;
+    const autocompactBuffer = contextSegmentConfig?.autocompactBuffer ?? 33000;
 
     const results = await Promise.allSettled([
       this.usageProvider.getUsageInfo(hookData.session_id, hookData),
