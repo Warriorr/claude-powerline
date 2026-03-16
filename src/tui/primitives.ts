@@ -1,6 +1,6 @@
 import type { BoxChars } from "./types";
 
-import { visibleLength } from "../utils/terminal";
+import { visibleLength, stripAnsi } from "../utils/terminal";
 
 export function colorize(text: string, fgColor: string, reset: string): string {
   if (!fgColor) {
@@ -17,17 +17,19 @@ export function padRight(text: string, width: number): string {
   return text + " ".repeat(width - visible);
 }
 
+const ESC = String.fromCharCode(27);
+const ANSI_SPLIT = new RegExp(`(${ESC}\\[[0-9;]*m)`);
+
 export function truncateAnsi(text: string, maxWidth: number): string {
-  const stripped = text.replace(/\x1b\[[0-9;]*m/g, "");
-  if (stripped.length <= maxWidth) {
+  if (stripAnsi(text).length <= maxWidth) {
     return text;
   }
 
   let width = 0;
   let result = "";
-  const parts = text.split(/(\x1b\[[0-9;]*m)/);
+  const parts = text.split(ANSI_SPLIT);
   for (const part of parts) {
-    if (part.startsWith("\x1b[")) {
+    if (part.startsWith(ESC)) {
       result += part;
       continue;
     }
