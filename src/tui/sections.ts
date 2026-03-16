@@ -184,6 +184,12 @@ export function collectFooterParts(
     if (data.metricsInfo.linesRemoved !== null && data.metricsInfo.linesRemoved > 0) {
       metricParts.push(`${sym.metrics_lines_removed}${data.metricsInfo.linesRemoved}`);
     }
+    if (data.blockInfo?.burnRate !== null && data.blockInfo?.burnRate !== undefined && data.blockInfo.burnRate > 0) {
+      const burnStr = data.blockInfo.burnRate < 1
+        ? `${(data.blockInfo.burnRate * 100).toFixed(0)}c/h`
+        : `$${data.blockInfo.burnRate.toFixed(2)}/h`;
+      metricParts.push(`${sym.metrics_burn}${burnStr}`);
+    }
     if (metricParts.length > 0) {
       parts.push(colorize(metricParts.join(" · "), colors.metricsFg, reset));
     }
