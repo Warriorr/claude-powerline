@@ -195,7 +195,7 @@ export function collectFooterParts(
       const burnStr = data.blockInfo.burnRate < 1
         ? `${(data.blockInfo.burnRate * 100).toFixed(0)}c/h`
         : `$${data.blockInfo.burnRate.toFixed(2)}/h`;
-      metricParts.push(`${sym.metrics_burn}${burnStr}`);
+      metricParts.push(`${sym.metrics_burn} ${burnStr}`);
     }
     if (metricParts.length > 0) {
       parts.push(colorize(metricParts.join(" · "), colors.metricsFg, reset));
