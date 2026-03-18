@@ -11,4 +11,5 @@ export default defineConfig({
   minify: true,
   treeshake: true,
   target: "node18",
+  external: ["koffi"],
 });
