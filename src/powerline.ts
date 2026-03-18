@@ -644,13 +644,14 @@ export class PowerlineRenderer {
     const fallbackTheme = getTheme("dark", colorSupport)!;
 
     const isTui = this.config.display.style === "tui";
-    const DARK_TERMINAL_REF = "#1e1e1e";
+    const isLightTheme = theme === "light";
+    const terminalRef = isLightTheme ? "#f0f0f0" : "#1e1e1e";
 
     const getSegmentColors = (segment: Exclude<keyof ColorTheme, "tui">) => {
       const colors = colorTheme[segment] || fallbackTheme[segment];
 
       let fgHex = colors.fg;
-      if (isTui && hexColorDistance(fgHex, DARK_TERMINAL_REF) < 60) {
+      if (isTui && hexColorDistance(fgHex, terminalRef) < 60) {
         fgHex = colors.bg;
       }
 
