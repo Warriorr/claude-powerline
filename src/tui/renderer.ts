@@ -1,5 +1,5 @@
 import type { PowerlineConfig } from "../config/loader";
-import type { TuiData, BoxChars, LayoutMode } from "./types";
+import type { TuiData, BoxChars, LayoutMode, RenderCtx } from "./types";
 
 import { SYMBOLS, TEXT_SYMBOLS } from "../utils/constants";
 import { contentRow, bottomBorder } from "./primitives";
@@ -12,6 +12,11 @@ import {
   renderNarrowMetrics,
   renderNarrowBottom,
 } from "./layouts";
+
+// Synchronized Output (DEC mode 2026): prevents tearing on multi-line renders.
+// Terminals that don't support it silently ignore these sequences.
+const SYNC_START = "\x1b[?2026h";
+const SYNC_END = "\x1b[?2026l";
 
 const MIN_PANEL_WIDTH = 32;
 const WIDE_THRESHOLD = 80;
@@ -57,17 +62,19 @@ export function renderTuiPanel(
     lines.push(contentRow(box, contextLine, innerWidth));
   }
 
+  const ctx: RenderCtx = { lines, data, box, contentWidth, innerWidth, sym, config, reset, colors };
+
   if (mode === "wide") {
-    renderWideMetrics(lines, data, box, contentWidth, innerWidth, sym, config, reset, colors);
-    renderWideBottom(lines, data, box, contentWidth, innerWidth, sym, config, reset, colors);
+    renderWideMetrics(ctx);
+    renderWideBottom(ctx);
   } else if (mode === "medium") {
-    renderMediumMetrics(lines, data, box, contentWidth, innerWidth, sym, config, reset, colors);
-    renderMediumBottom(lines, data, box, contentWidth, innerWidth, sym, config, reset, colors);
+    renderMediumMetrics(ctx);
+    renderMediumBottom(ctx);
   } else {
-    renderNarrowMetrics(lines, data, box, contentWidth, innerWidth, sym, config, reset, colors);
-    renderNarrowBottom(lines, data, box, contentWidth, innerWidth, sym, config, reset, colors);
+    renderNarrowMetrics(ctx);
+    renderNarrowBottom(ctx);
   }
 
   lines.push(bottomBorder(box, innerWidth));
-  return lines.join("\n");
+  return SYNC_START + lines.join("\n") + SYNC_END;
 }

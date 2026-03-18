@@ -1,9 +1,7 @@
-import type { PowerlineConfig } from "../config/loader";
-import type { PowerlineColors } from "../themes";
-import type { TuiData, SymbolSet, BoxChars } from "./types";
+import type { RenderCtx } from "./types";
 
 import { formatCost } from "../utils/formatters";
-import { contentRow, divider, truncateAnsi, spreadEven, spreadTwo, colorize } from "./primitives";
+import { contentRow, divider, spreadEven, spreadTwo, colorize } from "./primitives";
 import {
   collectMetricSegments,
   collectActivityParts,
@@ -16,34 +14,16 @@ import {
 
 // --- Wide layout (80+ cols): metrics on 1 line, workspace+footer on 1 line ---
 
-export function renderWideMetrics(
-  lines: string[],
-  data: TuiData,
-  box: BoxChars,
-  contentWidth: number,
-  innerWidth: number,
-  sym: SymbolSet,
-  config: PowerlineConfig,
-  reset: string,
-  colors: PowerlineColors,
-): void {
+export function renderWideMetrics(ctx: RenderCtx): void {
+  const { lines, data, box, contentWidth, innerWidth, sym, config, reset, colors } = ctx;
   const segments = collectMetricSegments(data, sym, config, reset, colors);
   if (segments.length > 0) {
-    lines.push(contentRow(box, truncateAnsi(spreadEven(segments, contentWidth), contentWidth), innerWidth));
+    lines.push(contentRow(box, spreadEven(segments, contentWidth), innerWidth));
   }
 }
 
-export function renderWideBottom(
-  lines: string[],
-  data: TuiData,
-  box: BoxChars,
-  contentWidth: number,
-  innerWidth: number,
-  sym: SymbolSet,
-  config: PowerlineConfig,
-  reset: string,
-  colors: PowerlineColors,
-): void {
+export function renderWideBottom(ctx: RenderCtx): void {
+  const { lines, data, box, contentWidth, innerWidth, sym, config, reset, colors } = ctx;
   const leftParts = collectWorkspaceParts(data, sym, reset, colors);
   const rightParts = collectFooterParts(data, sym, config, reset, colors);
 
@@ -58,17 +38,8 @@ export function renderWideBottom(
 
 // --- Medium layout (55-79 cols): metrics on 2 lines, workspace and footer separate ---
 
-export function renderMediumMetrics(
-  lines: string[],
-  data: TuiData,
-  box: BoxChars,
-  contentWidth: number,
-  innerWidth: number,
-  sym: SymbolSet,
-  config: PowerlineConfig,
-  reset: string,
-  colors: PowerlineColors,
-): void {
+export function renderMediumMetrics(ctx: RenderCtx): void {
+  const { lines, data, box, contentWidth, innerWidth, sym, config, reset, colors } = ctx;
   const line1Parts: string[] = [];
   const line2Parts: string[] = [];
 
@@ -95,17 +66,8 @@ export function renderMediumMetrics(
   }
 }
 
-export function renderMediumBottom(
-  lines: string[],
-  data: TuiData,
-  box: BoxChars,
-  contentWidth: number,
-  innerWidth: number,
-  sym: SymbolSet,
-  config: PowerlineConfig,
-  reset: string,
-  colors: PowerlineColors,
-): void {
+export function renderMediumBottom(ctx: RenderCtx): void {
+  const { lines, data, box, contentWidth, innerWidth, sym, config, reset, colors } = ctx;
   const workspaceParts = collectWorkspaceParts(data, sym, reset, colors);
   if (workspaceParts.length > 0) {
     lines.push(divider(box, innerWidth));
@@ -115,25 +77,16 @@ export function renderMediumBottom(
   const footerParts = collectFooterParts(data, sym, config, reset, colors);
   if (footerParts.length > 0) {
     lines.push(divider(box, innerWidth));
-    lines.push(contentRow(box, truncateAnsi(footerParts.join(" · "), contentWidth), innerWidth));
+    lines.push(contentRow(box, footerParts.join(" · "), innerWidth));
   }
 }
 
 // --- Narrow layout (<55 cols): everything stacks ---
 
-export function renderNarrowMetrics(
-  lines: string[],
-  data: TuiData,
-  box: BoxChars,
-  contentWidth: number,
-  innerWidth: number,
-  sym: SymbolSet,
-  config: PowerlineConfig,
-  reset: string,
-  colors: PowerlineColors,
-): void {
+export function renderNarrowMetrics(ctx: RenderCtx): void {
+  const { lines, data, box, contentWidth, innerWidth, sym, config, reset, colors } = ctx;
   if (data.blockInfo) {
-    lines.push(contentRow(box, truncateAnsi(colorize(formatBlockSegment(data.blockInfo, sym, config), colors.blockFg, reset), contentWidth), innerWidth));
+    lines.push(contentRow(box, colorize(formatBlockSegment(data.blockInfo, sym, config), colors.blockFg, reset), innerWidth));
   }
 
   const sessionAndToday: string[] = [];
@@ -148,17 +101,8 @@ export function renderNarrowMetrics(
   }
 }
 
-export function renderNarrowBottom(
-  lines: string[],
-  data: TuiData,
-  box: BoxChars,
-  contentWidth: number,
-  innerWidth: number,
-  sym: SymbolSet,
-  config: PowerlineConfig,
-  reset: string,
-  colors: PowerlineColors,
-): void {
+export function renderNarrowBottom(ctx: RenderCtx): void {
+  const { lines, data, box, contentWidth, innerWidth, sym, config, reset, colors } = ctx;
   const workspaceParts = collectWorkspaceParts(data, sym, reset, colors);
   if (workspaceParts.length > 0) {
     lines.push(divider(box, innerWidth));
@@ -167,6 +111,6 @@ export function renderNarrowBottom(
 
   const footerParts = collectFooterParts(data, sym, config, reset, colors);
   if (footerParts.length > 0) {
-    lines.push(contentRow(box, truncateAnsi(footerParts.join(" · "), contentWidth), innerWidth));
+    lines.push(contentRow(box, footerParts.join(" · "), innerWidth));
   }
 }

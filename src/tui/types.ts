@@ -35,3 +35,15 @@ export interface TuiData {
 export type SymbolSet = typeof SYMBOLS | typeof TEXT_SYMBOLS;
 
 export type LayoutMode = "wide" | "medium" | "narrow";
+
+export interface RenderCtx {
+  lines: string[];
+  data: TuiData;
+  box: BoxChars;
+  contentWidth: number;
+  innerWidth: number;
+  sym: SymbolSet;
+  config: import("../config/loader").PowerlineConfig;
+  reset: string;
+  colors: PowerlineColors;
+}
