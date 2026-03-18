@@ -46,6 +46,15 @@ exports[`TUI Panel Rendering Edge cases should handle null terminal width 1`] = 
 ╰──────────────────────────────────────────────────────────────────────────────╯[?2026l"
 `;
 
+exports[`TUI Panel Rendering Edge cases should show git working tree counts 1`] = `
+"[?2026h╭─ claude 3.5 sonnet ──────────────────────────────────────────────────────────── claude-powerline ╮
+│ ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫  45%  90k/200k                                          │
+│ ◱ $0.12 · 60h 0m left 1%          § $0.05 · 42.1K          ☉ $1.87 today 4%          ⧗ 2m · ⟐ 12 │
+├──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⎇ main ● (+3 ~2 ?1)  /h/u/project             ◈ v1.19.6 · tmux:dev · ⧖ 2.3s · +48 · -15 · ⟢45c/h │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯[?2026l"
+`;
+
 exports[`TUI Panel Rendering Medium layout (55-79 cols) should render metrics across 2 lines 1`] = `
 "[?2026h╭─ claude 3.5 sonnet ───────────────────────── claude-powerline ╮
 │ ▪▪▪▪▪▪▪▪▪▪▪▪▫▫▫▫▫▫▫▫▫▫▫▫▫▫▫  45%  90k/200k                    │

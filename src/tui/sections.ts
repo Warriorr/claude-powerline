@@ -148,6 +148,13 @@ export function collectWorkspaceParts(
     if (data.gitInfo.behind > 0) {
       gitText += ` ${sym.git_behind}${data.gitInfo.behind}`;
     }
+    const counts: string[] = [];
+    if (data.gitInfo.staged && data.gitInfo.staged > 0) counts.push(`+${data.gitInfo.staged}`);
+    if (data.gitInfo.unstaged && data.gitInfo.unstaged > 0) counts.push(`~${data.gitInfo.unstaged}`);
+    if (data.gitInfo.untracked && data.gitInfo.untracked > 0) counts.push(`?${data.gitInfo.untracked}`);
+    if (counts.length > 0) {
+      gitText += ` (${counts.join(" ")})`;
+    }
     parts.push(colorize(gitText, colors.gitFg, reset));
   }
 

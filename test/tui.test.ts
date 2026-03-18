@@ -102,6 +102,15 @@ describe("TUI Panel Rendering", () => {
       expect(result).toMatchSnapshot();
     });
 
+    it("should show git working tree counts", () => {
+      const result = renderTuiPanel(
+        makeTuiData({ gitInfo: { branch: "main", status: "dirty", ahead: 0, behind: 0, staged: 3, unstaged: 2, untracked: 1 } }),
+        BOX_CHARS, "", 100, tuiConfig,
+      );
+      expect(result).toContain("(+3 ~2 ?1)");
+      expect(result).toMatchSnapshot();
+    });
+
     it("should handle context at critical level", () => {
       const result = renderTuiPanel(
         makeTuiData({ contextInfo: { totalTokens: 180000, maxTokens: 200000, usablePercentage: 90, percentage: 90, contextLeftPercentage: 10, usableTokens: 20000 } }),

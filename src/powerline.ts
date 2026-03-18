@@ -275,7 +275,7 @@ export class PowerlineRenderer {
       this.metricsProvider.getMetricsInfo(hookData.session_id, hookData),
       this.gitService.getGitInfo(
         currentDir,
-        { showSha: false, showWorkingTree: false, showOperation: false, showTag: false, showTimeSinceCommit: false, showStashCount: false, showUpstream: false, showRepoName: false },
+        { showSha: false, showWorkingTree: true, showOperation: false, showTag: false, showTimeSinceCommit: false, showStashCount: false, showUpstream: false, showRepoName: false },
         hookData.workspace?.project_dir,
       ),
       this.tmuxService.getSessionId(),
