@@ -14,7 +14,7 @@
 
 ### Demo
 
-<img src="images/demo.gif" alt="Claude Powerline Demo" width="600"/>
+<img src="images/demo-tui.gif" alt="Claude Powerline TUI Mode Demo" width="600"/>
 
 _Live demonstration: real-time usage tracking, git integration, and theme showcase_
 
