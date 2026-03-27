@@ -150,7 +150,7 @@ export class PowerlineRenderer {
       : null;
 
     const blockInfo = this.needsSegmentInfo("block")
-      ? await this.blockProvider.getActiveBlockInfo()
+      ? await this.blockProvider.getActiveBlockInfo(hookData.rate_limits?.five_hour)
       : null;
 
     const todayInfo = this.needsSegmentInfo("today")
@@ -158,7 +158,7 @@ export class PowerlineRenderer {
       : null;
 
     const weeklyInfo = this.needsSegmentInfo("weekly")
-      ? await this.weeklyProvider.getWeeklyInfo()
+      ? await this.weeklyProvider.getWeeklyInfo(hookData.rate_limits?.seven_day)
       : null;
 
     const contextSegmentConfig = this.config.display.lines
@@ -193,6 +193,7 @@ export class PowerlineRenderer {
           usageInfo,
           blockInfo,
           todayInfo,
+          weeklyInfo,
           contextInfo,
           metricsInfo,
         ),
@@ -309,7 +310,7 @@ export class PowerlineRenderer {
 
     const results = await Promise.allSettled([
       this.usageProvider.getUsageInfo(hookData.session_id, hookData),
-      this.blockProvider.getActiveBlockInfo(),
+      this.blockProvider.getActiveBlockInfo(hookData.rate_limits?.five_hour),
       this.todayProvider.getTodayInfo(),
       this.contextProvider.getContextInfo(hookData, autocompactBuffer),
       this.metricsProvider.getMetricsInfo(hookData.session_id, hookData),

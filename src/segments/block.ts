@@ -22,6 +22,8 @@ export interface BlockInfo {
   timeElapsed: number | null;
   burnRate: number | null;
   tokenBurnRate: number | null;
+  rateLimitPercentage: number | null;
+  resetsAt: Date | null;
 }
 
 function getModelRateLimitWeight(model: string): number {
@@ -204,7 +206,7 @@ export class BlockProvider {
     }
   }
 
-  async getActiveBlockInfo(): Promise<BlockInfo> {
+  async getActiveBlockInfo(rateLimits?: { used_percentage: number; resets_at: number }): Promise<BlockInfo> {
     try {
       const entries = await this.loadUsageEntries();
 
@@ -218,6 +220,8 @@ export class BlockProvider {
           timeElapsed: null,
           burnRate: null,
           tokenBurnRate: null,
+          rateLimitPercentage: rateLimits?.used_percentage ?? null,
+          resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
         };
       }
 
@@ -245,7 +249,10 @@ export class BlockProvider {
       const now = new Date();
       let timeRemaining: number | null = null;
 
-      if (entries.length > 0) {
+      if (rateLimits?.resets_at) {
+        const resetTime = new Date(rateLimits.resets_at * 1000);
+        timeRemaining = Math.max(0, Math.round((resetTime.getTime() - now.getTime()) / (1000 * 60)));
+      } else if (entries.length > 0) {
         const firstEntry = entries[0];
         if (firstEntry) {
           const sessionDurationMs = this.sessionDurationHours * 60 * 60 * 1000;
@@ -304,6 +311,8 @@ export class BlockProvider {
         timeElapsed,
         burnRate,
         tokenBurnRate,
+        rateLimitPercentage: rateLimits?.used_percentage ?? null,
+        resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
       };
     } catch (error) {
       debug("Error getting active block info:", error);
@@ -315,6 +324,8 @@ export class BlockProvider {
         timeElapsed: null,
         burnRate: null,
         tokenBurnRate: null,
+        rateLimitPercentage: rateLimits?.used_percentage ?? null,
+        resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
       };
     }
   }

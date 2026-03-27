@@ -22,6 +22,8 @@ export interface WeeklyInfo {
   tokenBreakdown: TokenBreakdown | null;
   weekStart: string;
   timeLeft: number | null;
+  rateLimitPercentage: number | null;
+  resetsAt: Date | null;
 }
 
 function getTotalTokens(usage: WeeklyUsageEntry["usage"]): number {
@@ -136,7 +138,7 @@ export class WeeklyProvider {
     }
   }
 
-  async getWeeklyInfo(): Promise<WeeklyInfo> {
+  async getWeeklyInfo(rateLimits?: { used_percentage: number; resets_at: number }): Promise<WeeklyInfo> {
     const weekStartString = formatDate(getWeekStart());
 
     try {
@@ -147,12 +149,18 @@ export class WeeklyProvider {
         const emptyWeekDurationMs = 7 * 24 * 60 * 60 * 1000;
         const emptyNextWeekStart = new Date(emptyWeekStart.getTime() + emptyWeekDurationMs);
         const emptyTimeLeftMs = Math.max(0, emptyNextWeekStart.getTime() - new Date().getTime());
+        const emptyResetsAt = rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null;
+        const emptyTimeLeft = emptyResetsAt
+          ? Math.max(0, Math.round((emptyResetsAt.getTime() - new Date().getTime()) / (1000 * 60)))
+          : Math.round(emptyTimeLeftMs / (1000 * 60));
         return {
           cost: null,
           tokens: null,
           tokenBreakdown: null,
           weekStart: weekStartString,
-          timeLeft: Math.round(emptyTimeLeftMs / (1000 * 60)),
+          timeLeft: emptyTimeLeft,
+          rateLimitPercentage: rateLimits?.used_percentage ?? null,
+          resetsAt: emptyResetsAt,
         };
       }
 
@@ -181,12 +189,18 @@ export class WeeklyProvider {
       const nextWeekStart = new Date(getWeekStart().getTime() + weekDurationMs);
       const timeLeftMs = Math.max(0, nextWeekStart.getTime() - new Date().getTime());
       const timeLeft = Math.round(timeLeftMs / (1000 * 60));
+      const resetsAt = rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null;
+      const resolvedTimeLeft = resetsAt
+        ? Math.max(0, Math.round((resetsAt.getTime() - new Date().getTime()) / (1000 * 60)))
+        : timeLeft;
       return {
         cost: totalCost,
         tokens: totalTokens,
         tokenBreakdown,
         weekStart: weekStartString,
-        timeLeft,
+        timeLeft: resolvedTimeLeft,
+        rateLimitPercentage: rateLimits?.used_percentage ?? null,
+        resetsAt,
       };
     } catch (error) {
       debug("Error getting weekly info:", error);
@@ -196,6 +210,8 @@ export class WeeklyProvider {
         tokenBreakdown: null,
         weekStart: weekStartString,
         timeLeft: null,
+        rateLimitPercentage: rateLimits?.used_percentage ?? null,
+        resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
       };
     }
   }

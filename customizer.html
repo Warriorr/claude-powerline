@@ -470,9 +470,10 @@ const SEGMENT_DEFS = {
         <div class="field" style="margin-top:6px">
           <label>Percentage mode</label>
           <select onchange="segProp(this,'percentageMode');update()">
-            ${opt(['left','used'], s.percentageMode||'left')}
+            <option value="left" ${(s.percentageMode||'left')==='left'?'selected':''}>left</option>
+            <option value="used" ${s.percentageMode==='used'?'selected':''}>spent</option>
           </select>
-          <p class="hint">left: "83% left" · used: "17% used" — only applies when % is enabled above</p>
+          <p class="hint">left: "38% left" · spent: "62% spent" — uses API-reported quota when available (requires Claude.ai Pro/Max + Claude Code ≥ 2.1.80), otherwise falls back to time-based estimate</p>
         </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
         <div class="toggle-row">
@@ -507,7 +508,19 @@ const SEGMENT_DEFS = {
             ${opt(['cost','tokens','both','breakdown'], s.type)}
           </select></div>
         <div class="toggle-row" style="margin-top:8px">
-          <label>Show time until weekly reset <span class="new-badge">NEW</span></label>
+          <label>Show % of 7-day quota <span class="new-badge">NEW</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showPercentage?'checked':''} onchange="segPropBool(this,'showPercentage');update()"><span class="slider"></span></label>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label>Percentage mode</label>
+          <select onchange="segProp(this,'percentageMode');update()">
+            <option value="used" ${(s.percentageMode||'used')==='used'?'selected':''}>spent</option>
+            <option value="left" ${s.percentageMode==='left'?'selected':''}>left</option>
+          </select>
+          <p class="hint">spent: "18% spent" · left: "82% left" — requires Claude.ai Pro/Max + Claude Code ≥ 2.1.80</p>
+        </div>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show time until weekly reset</label>
           <label class="toggle"><input type="checkbox" ${s.showTimeLeft?'checked':''} onchange="segPropBool(this,'showTimeLeft');update()"><span class="slider"></span></label>
         </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
@@ -1034,7 +1047,20 @@ function getSegLabel(seg) {
       return '~/projects/myapp';
 
     case 'model':     return ' claude-sonnet';
-    case 'git':       return ' main ✓';
+    case 'git': {
+      const parts = [];
+      if (seg.showRepoName)         parts.push('myapp');
+      parts.push(' main');
+      if (seg.showOperation)        parts.push('|MERGING');
+      if (seg.showTag)              parts.push(' ⌂ v1.2.0');
+      if (seg.showSha)              parts.push(' ♯ a1b2c3d');
+      if (seg.showWorkingTree)      parts.push(' (~2 ?1)');
+      if (seg.showAheadBehind)      parts.push(' ↑2↓1');
+      if (seg.showUpstream)         parts.push(' →origin/main');
+      if (seg.showTimeSinceCommit)  parts.push(' ◷ 2h');
+      if (seg.showStashCount)       parts.push(' ≡3');
+      return parts.join('');
+    }
     case 'tmux':      return 'tmux:0';
     case 'version':   return 'v1.21';
     case 'sessionId': return (seg.showIdLabel !== false ? ' ' : '') + 'abc123';
@@ -1068,12 +1094,14 @@ function getSegLabel(seg) {
       if (burn === 'cost')  main += ' | $0.50/h';
       else if (burn === 'tokens') main += ' | 50k/h';
       else if (burn === 'both')   main += ' | $0.50/h / 50k/h';
-      if (seg.showElapsed)   main += ' (30m used, 2h 30m left)';
-      else                   main += ' (2h 30m left)';
+      const extras = [];
       if (seg.showPercentage) {
         const pctMode = seg.percentageMode || 'left';
-        main += pctMode === 'used' ? ' 17% used' : ' 83% left';
+        extras.push(pctMode === 'used' ? '62% spent' : '38% left');
       }
+      if (seg.showElapsed) extras.push('30m used');
+      extras.push('2h 30m left');
+      main += ` (${extras.join(', ')})`;
       return blockIcon + main;
     }
 
@@ -1085,6 +1113,10 @@ function getSegLabel(seg) {
                : t === 'breakdown' ? '↓400k ↑300k ◌500k'
                :                     '$12.40';
       const extras = [];
+      if (seg.showPercentage) {
+        const pctMode = seg.percentageMode || 'used';
+        extras.push(pctMode === 'left' ? '82% left' : '18% spent');
+      }
       if (seg.showTimeLeft)   extras.push('3d 14h left');
       if (extras.length) main += ` (${extras.join(', ')})`;
       return weeklyIcon + main;

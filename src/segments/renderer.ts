@@ -77,6 +77,8 @@ export interface TodaySegmentConfig extends SegmentConfig {
 export interface WeeklySegmentConfig extends SegmentConfig {
   type: "cost" | "tokens" | "both" | "breakdown";
   showTimeLeft?: boolean;
+  showPercentage?: boolean;
+  percentageMode?: "left" | "used";
   showIcon?: boolean;
   customIcon?: string;
 }
@@ -721,26 +723,35 @@ export class SegmentRenderer {
 
       const blockDurationMinutes = 5 * 60;
       const pctMode = config?.percentageMode ?? "left";
-      const percentageContent =
-        config?.showPercentage && blockInfo.timeRemaining !== null
-          ? (() => {
-              const leftPct = Math.min(100, Math.round((blockInfo.timeRemaining / blockDurationMinutes) * 100));
-              const pct = pctMode === "used" ? 100 - leftPct : leftPct;
-              return ` ${pct}% ${pctMode}`;
-            })()
-          : "";
 
       if (type === "time") {
         displayText = mainContent;
-      } else if (config?.showElapsed && blockInfo.timeElapsed !== null && timeStr !== null) {
-        const elapsedHours = Math.floor(blockInfo.timeElapsed / 60);
-        const elapsedMins = blockInfo.timeElapsed % 60;
-        const elapsedStr = elapsedHours > 0 ? `${elapsedHours}h ${elapsedMins}m` : `${elapsedMins}m`;
-        displayText = `${mainContent}${burnContent} (${elapsedStr} used, ${timeStr} left)${percentageContent}`;
       } else {
-        displayText = timeStr
-          ? `${mainContent}${burnContent} (${timeStr} left)${percentageContent}`
-          : `${mainContent}${burnContent}${percentageContent}`;
+        const extras: string[] = [];
+
+        if (config?.showPercentage) {
+          if (blockInfo.rateLimitPercentage !== null) {
+            const pct = pctMode === "left" ? 100 - blockInfo.rateLimitPercentage : blockInfo.rateLimitPercentage;
+            extras.push(pctMode === "left" ? `${pct}% left` : `${pct}% spent`);
+          } else if (blockInfo.timeRemaining !== null) {
+            const leftPct = Math.min(100, Math.round((blockInfo.timeRemaining / blockDurationMinutes) * 100));
+            const pct = pctMode === "used" ? 100 - leftPct : leftPct;
+            extras.push(pctMode === "used" ? `${pct}% spent` : `${pct}% left`);
+          }
+        }
+
+        if (config?.showElapsed && blockInfo.timeElapsed !== null) {
+          const elapsedHours = Math.floor(blockInfo.timeElapsed / 60);
+          const elapsedMins = blockInfo.timeElapsed % 60;
+          const elapsedStr = elapsedHours > 0 ? `${elapsedHours}h ${elapsedMins}m` : `${elapsedMins}m`;
+          extras.push(`${elapsedStr} used`);
+        }
+
+        if (timeStr) extras.push(`${timeStr} left`);
+
+        displayText = extras.length > 0
+          ? `${mainContent}${burnContent} (${extras.join(", ")})`
+          : `${mainContent}${burnContent}`;
       }
     }
 
@@ -887,6 +898,12 @@ export class SegmentRenderer {
     );
 
     const extras: string[] = [];
+
+    if (config?.showPercentage && weeklyInfo.rateLimitPercentage !== null) {
+      const pctMode = config?.percentageMode ?? "used";
+      const pct = pctMode === "left" ? 100 - weeklyInfo.rateLimitPercentage : weeklyInfo.rateLimitPercentage;
+      extras.push(pctMode === "left" ? `${pct}% left` : `${pct}% spent`);
+    }
 
     if (config?.showTimeLeft && weeklyInfo.timeLeft !== null) {
       const days = Math.floor(weeklyInfo.timeLeft / (24 * 60));

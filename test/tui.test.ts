@@ -15,6 +15,7 @@ const PLAIN_COLORS: PowerlineColors = {
   contextCriticalBg: "", contextCriticalFg: "",
   metricsBg: "", metricsFg: "", versionBg: "", versionFg: "",
   envBg: "", envFg: "",
+  weeklyBg: "", weeklyFg: "",
 };
 
 const tuiConfig: PowerlineConfig = {
@@ -37,7 +38,7 @@ function makeTuiData(overrides: Partial<TuiData> = {}): TuiData {
       version: "1.19.6",
     },
     usageInfo: { session: { cost: 0.0523, tokens: 42150, calculatedCost: 0.0523, officialCost: null, tokenBreakdown: null } },
-    blockInfo: { cost: 0.12, tokens: 5000, weightedTokens: 5000, timeRemaining: 3600, burnRate: 0.45, tokenBurnRate: null },
+    blockInfo: { cost: 0.12, tokens: 5000, weightedTokens: 5000, timeRemaining: 3600, timeElapsed: null, burnRate: 0.45, tokenBurnRate: null, rateLimitPercentage: null, resetsAt: null },
     todayInfo: { cost: 1.87, tokens: null, tokenBreakdown: null, date: "2026-03-17" },
     contextInfo: { totalTokens: 90000, maxTokens: 200000, usablePercentage: 45, percentage: 45, contextLeftPercentage: 55, usableTokens: 110000 },
     metricsInfo: { responseTime: 2.3, lastResponseTime: null, sessionDuration: 125, messageCount: 12, linesAdded: 48, linesRemoved: 15 },
