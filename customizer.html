@@ -510,17 +510,6 @@ const SEGMENT_DEFS = {
           <label>Show time until weekly reset <span class="new-badge">NEW</span></label>
           <label class="toggle"><input type="checkbox" ${s.showTimeLeft?'checked':''} onchange="segPropBool(this,'showTimeLeft');update()"><span class="slider"></span></label>
         </div>
-        <div class="toggle-row">
-          <label>Show % of week <span class="new-badge">NEW</span></label>
-          <label class="toggle"><input type="checkbox" ${s.showPercentage?'checked':''} onchange="segPropBool(this,'showPercentage');update()"><span class="slider"></span></label>
-        </div>
-        <div class="field" style="margin-top:6px">
-          <label>Percentage mode</label>
-          <select onchange="segProp(this,'percentageMode');update()">
-            ${opt(['left','used'], s.percentageMode||'left')}
-          </select>
-          <p class="hint">left: "52% left" · used: "48% used" — only applies when % is enabled above</p>
-        </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
         <div class="toggle-row">
           <label>Show icon prefix</label>
@@ -1097,10 +1086,6 @@ function getSegLabel(seg) {
                :                     '$12.40';
       const extras = [];
       if (seg.showTimeLeft)   extras.push('3d 14h left');
-      if (seg.showPercentage) {
-        const pctMode = seg.percentageMode || 'left';
-        extras.push(pctMode === 'used' ? '48% used' : '52% left');
-      }
       if (extras.length) main += ` (${extras.join(', ')})`;
       return weeklyIcon + main;
     }
