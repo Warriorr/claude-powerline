@@ -731,7 +731,7 @@ export class SegmentRenderer {
 
         if (config?.showPercentage) {
           if (blockInfo.rateLimitPercentage !== null) {
-            const pct = pctMode === "left" ? 100 - blockInfo.rateLimitPercentage : blockInfo.rateLimitPercentage;
+            const pct = Math.round(pctMode === "left" ? 100 - blockInfo.rateLimitPercentage : blockInfo.rateLimitPercentage);
             extras.push(pctMode === "left" ? `${pct}% left` : `${pct}% spent`);
           } else if (blockInfo.timeRemaining !== null) {
             const leftPct = Math.min(100, Math.round((blockInfo.timeRemaining / blockDurationMinutes) * 100));
@@ -901,7 +901,7 @@ export class SegmentRenderer {
 
     if (config?.showPercentage && weeklyInfo.rateLimitPercentage !== null) {
       const pctMode = config?.percentageMode ?? "used";
-      const pct = pctMode === "left" ? 100 - weeklyInfo.rateLimitPercentage : weeklyInfo.rateLimitPercentage;
+      const pct = Math.round(pctMode === "left" ? 100 - weeklyInfo.rateLimitPercentage : weeklyInfo.rateLimitPercentage);
       extras.push(pctMode === "left" ? `${pct}% left` : `${pct}% spent`);
     }
 
