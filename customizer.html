@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Powerline Customizer</title>
+<!-- Try to load Symbols Nerd Font for icon preview -->
+<style>
+  @font-face {
+    font-family: 'Symbols Nerd Font Mono';
+    src: url('https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.2.1/patched-fonts/NerdFontsSymbolsOnly/NFSymbolsOnly-Regular.ttf') format('truetype');
+    font-display: swap;
+  }
+</style>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #533483;
+    --text: #eaeaea;
+    --text2: #a0a0b0;
+    --border: #2a2a4a;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --purple: #a78bfa;
+    --cyan: #22d3ee;
+    --radius: 8px;
+    --font: 'Segoe UI', system-ui, sans-serif;
+    --mono: 'Symbols Nerd Font Mono', 'JetBrains Mono NF', 'JetBrains Mono Nerd Font', 'Hack Nerd Font', 'FiraCode Nerd Font', 'CaskaydiaCove Nerd Font', 'MesloLGS NF', 'Cascadia Code NF', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding-bottom: 88px; }
+
+  /* Layout */
+  .app { display: grid; grid-template-columns: 1fr 420px; gap: 0; min-height: 100vh; }
+  .editor { padding: 24px; overflow-y: auto; }
+  .output-panel { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow: hidden; }
+
+  /* Header */
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+  header h1 { font-size: 1.4rem; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .badge { background: var(--accent2); color: var(--text); font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Section */
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+  .section-header { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+  .section-header:hover { background: rgba(255,255,255,0.03); }
+  .section-title { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+  .section-icon { font-size: 1rem; }
+  .section-body { padding: 16px; border-top: 1px solid var(--border); }
+  .collapsed .section-body { display: none; }
+  .chevron { color: var(--text2); font-size: 0.75rem; transition: transform 0.2s; }
+  .collapsed .chevron { transform: rotate(-90deg); }
+
+  /* Form controls */
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; font-size: 0.8rem; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
+  select, input[type=text], input[type=number] {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--text); padding: 7px 10px; font-size: 0.85rem; font-family: var(--font);
+    transition: border-color 0.15s;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+  input[type=color] { width: 100%; height: 34px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); cursor: pointer; padding: 2px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+  /* Toggle */
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
+  .toggle-row label { margin: 0; cursor: pointer; color: var(--text); font-size: 0.85rem; }
+  .toggle { position: relative; width: 38px; height: 20px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--border); border-radius: 20px; cursor: pointer; transition: 0.2s; }
+  .slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px; background: var(--text2); border-radius: 50%; transition: 0.2s; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(18px); background: white; }
+
+  /* Segment cards */
+  .line-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; }
+  .line-header { padding: 10px 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .line-header:hover { background: rgba(255,255,255,0.03); border-radius: var(--radius) var(--radius) 0 0; }
+  .line-num { background: var(--accent2); color: var(--text); font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
+  .line-title { font-size: 0.85rem; font-weight: 600; flex: 1; }
+  .btn-remove { background: none; border: none; color: var(--red); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 1rem; opacity: 0.6; }
+  .btn-remove:hover { opacity: 1; background: rgba(248,113,113,0.1); }
+  .line-body { padding: 12px 14px; border-top: 1px solid var(--border); }
+
+  .seg-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
+  .seg-header { padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
+  .seg-name { font-size: 0.82rem; font-weight: 600; flex: 1; font-family: var(--mono); color: var(--cyan); }
+  .seg-body { padding: 10px 12px; border-top: 1px solid var(--border); }
+  .seg-body.hidden { display: none; }
+  .add-seg { display: flex; gap: 8px; margin-top: 10px; }
+  .add-seg select { flex: 1; }
+
+  /* Buttons */
+  .btn { padding: 7px 14px; border-radius: 5px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
+  .btn-success { background: #16a34a; color: white; }
+  .btn-add-line { width: 100%; padding: 8px; border: 1px dashed var(--border); background: none; color: var(--text2); cursor: pointer; border-radius: var(--radius); font-size: 0.82rem; margin-top: 6px; transition: all 0.15s; }
+  .btn-add-line:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Output panel */
+  .output-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .output-header h2 { font-size: 0.9rem; font-weight: 600; }
+  .output-actions { display: flex; gap: 8px; }
+  .output-body { flex: 1; overflow-y: auto; padding: 16px; }
+  pre { font-family: var(--mono); font-size: 0.78rem; line-height: 1.6; color: var(--green); white-space: pre-wrap; word-break: break-all; }
+  .preview-bar { background: var(--bg); border-bottom: 1px solid var(--border); padding: 12px 16px; }
+  .preview-bar h3 { font-size: 0.75rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .preview-segments { display: flex; flex-wrap: wrap; gap: 4px; }
+  .preview-seg { padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; font-family: var(--mono); font-weight: 500; }
+
+  /* Import */
+  .import-area { width: 100%; height: 80px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 8px; font-family: var(--mono); font-size: 0.78rem; resize: vertical; }
+
+  /* Hint */
+  .hint { font-size: 0.75rem; color: var(--text2); margin-top: 4px; line-height: 1.4; }
+  .new-badge { background: var(--green); color: #000; font-size: 0.62rem; font-weight: 700; padding: 1px 5px; border-radius: 3px; vertical-align: middle; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  /* Floating preview bar */
+  .preview-float {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(10,10,20,0.97); border-top: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+  }
+  .preview-float-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 16px 4px; cursor: pointer; user-select: none;
+  }
+  .preview-float-header:hover { background: rgba(255,255,255,0.03); }
+  .preview-float-label { font-size: 0.7rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+  .preview-float-hint { font-size: 0.68rem; color: var(--text2); opacity: 0.6; }
+  .preview-terminal {
+    padding: 8px 16px 12px; font-family: var(--mono); font-size: 0.82rem;
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 5px; overflow-x: auto; min-height: 44px;
+  }
+  .preview-line { display: inline-flex; align-items: stretch; }
+  .preview-terminal::-webkit-scrollbar { height: 3px; }
+  .preview-collapsed .preview-terminal { display: none; }
+
+  /* Theme preview dots */
+  .theme-dots { display: flex; gap: 4px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  /* Drag & drop */
+  .seg-card { transition: opacity 0.15s; }
+  .seg-card.dragging { opacity: 0.35; }
+  .seg-card.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; background: rgba(233,69,96,0.08); }
+  .drag-handle { color: var(--text2); cursor: grab; padding: 0 5px; font-size: 1rem; line-height: 1; user-select: none; opacity: 0.5; }
+  .drag-handle:hover { opacity: 1; color: var(--text); }
+  .line-card.drag-over-line { outline: 2px solid var(--purple); outline-offset: -2px; }
+  .reorder-btn { background: none; border: 1px solid var(--border); color: var(--text2); cursor: pointer; padding: 1px 5px; border-radius: 3px; font-size: 0.7rem; line-height: 1.2; transition: all 0.1s; }
+  .reorder-btn:hover:not(:disabled) { background: var(--surface2); color: var(--text); border-color: var(--accent); }
+  .reorder-btn:disabled { opacity: 0.2; cursor: default; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .output-panel { position: static; height: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ── LEFT: EDITOR ── -->
+  <div class="editor">
+    <header>
+      <h1>⚡ Claude Powerline Customizer</h1>
+      <span class="badge">v2</span>
+    </header>
+
+    <!-- IMPORT -->
+    <div class="section collapsed" id="sec-import">
+      <div class="section-header" onclick="toggleSection('sec-import')">
+        <span class="section-title"><span class="section-icon">📥</span> Import Existing Config</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="field">
+          <label>Paste your JSON config below</label>
+          <textarea class="import-area" id="import-json" placeholder='{"theme":"dark","display":{...}}'></textarea>
+        </div>
+        <button class="btn btn-secondary" onclick="importConfig()">Import & Apply</button>
+        <p class="hint">Paste any existing <code>.claude-powerline.json</code> to edit it visually.</p>
+      </div>
+    </div>
+
+    <!-- THEME -->
+    <div class="section" id="sec-theme">
+      <div class="section-header" onclick="toggleSection('sec-theme')">
+        <span class="section-title"><span class="section-icon">🎨</span> Theme</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="field">
+          <label>Color Theme</label>
+          <select id="theme" onchange="onThemeChange(); update()">
+            <option value="dark">dark</option>
+            <option value="light">light</option>
+            <option value="nord">nord</option>
+            <option value="tokyo-night">tokyo-night</option>
+            <option value="rose-pine">rose-pine</option>
+            <option value="gruvbox">gruvbox</option>
+            <option value="custom">custom</option>
+          </select>
+        </div>
+        <div id="custom-colors-section" style="display:none">
+          <hr class="divider">
+          <p class="hint" style="margin-bottom:10px">Define colors for each segment (hex values)</p>
+          <div id="color-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DISPLAY -->
+    <div class="section" id="sec-display">
+      <div class="section-header" onclick="toggleSection('sec-display')">
+        <span class="section-title"><span class="section-icon">🖥️</span> Display</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="grid-2">
+          <div class="field">
+            <label>Style</label>
+            <select id="display-style" onchange="update()">
+              <option value="minimal">minimal</option>
+              <option value="powerline">powerline</option>
+              <option value="capsule">capsule</option>
+              <option value="tui">tui</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Charset</label>
+            <select id="display-charset" onchange="update()">
+              <option value="unicode">unicode</option>
+              <option value="text">text</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Color Compatibility</label>
+            <select id="display-color" onchange="update()">
+              <option value="auto">auto</option>
+              <option value="truecolor">truecolor</option>
+              <option value="ansi256">ansi256</option>
+              <option value="ansi">ansi</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Padding (spaces)</label>
+            <input type="number" id="display-padding" value="1" min="0" max="4" onchange="update()">
+          </div>
+        </div>
+        <div class="toggle-row">
+          <label for="display-autowrap">Auto-wrap segments to new line</label>
+          <label class="toggle"><input type="checkbox" id="display-autowrap" onchange="update()"><span class="slider"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- LINES & SEGMENTS -->
+    <div class="section" id="sec-lines">
+      <div class="section-header" onclick="toggleSection('sec-lines')">
+        <span class="section-title"><span class="section-icon">📋</span> Lines & Segments</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="section-body">
+        <div id="lines-container"></div>
+        <button class="btn-add-line" onclick="addLine()">+ Add Line</button>
+      </div>
+    </div>
+
+    <!-- BUDGET -->
+    <div class="section" id="sec-budget">
+      <div class="section-header" onclick="toggleSection('sec-budget')">
+        <span class="section-title"><span class="section-icon">💰</span> Budget Limits</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="section-body">
+        <p class="hint" style="margin-bottom:12px">Set spending/token limits. Leave amount empty to disable.</p>
+        <div id="budget-items"></div>
+      </div>
+    </div>
+
+    <!-- MODEL CONTEXT LIMITS -->
+    <div class="section collapsed" id="sec-limits">
+      <div class="section-header" onclick="toggleSection('sec-limits')">
+        <span class="section-title"><span class="section-icon">🧠</span> Model Context Limits</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="section-body">
+        <p class="hint" style="margin-bottom:10px">Override context window sizes per model (optional).</p>
+        <div id="model-limits"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input type="text" id="new-model-name" placeholder="model name (e.g. sonnet)" style="flex:1">
+          <input type="number" id="new-model-limit" placeholder="200000" style="width:120px">
+          <button class="btn btn-secondary btn-sm" onclick="addModelLimit()">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: OUTPUT ── -->
+  <div class="output-panel">
+    <div class="output-header">
+      <h2>Generated Config</h2>
+      <div class="output-actions">
+        <button class="btn btn-secondary btn-sm" onclick="downloadConfig()">⬇ Download</button>
+        <button class="btn btn-primary btn-sm" id="copy-btn" onclick="copyConfig()">Copy JSON</button>
+      </div>
+    </div>
+    <div class="output-body">
+      <pre id="json-output"></pre>
+    </div>
+    <!-- Install Guide -->
+    <div style="border-top:1px solid var(--border)">
+      <div id="guide-header" onclick="toggleGuide()" style="padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;font-size:0.85rem;font-weight:600;color:var(--fg)">
+        <span>📦 How to install</span>
+        <span id="guide-chevron" style="font-size:0.8rem">▶</span>
+      </div>
+      <div id="guide-body" style="display:none;padding:0 16px 16px;font-size:0.82rem;line-height:1.7;color:var(--fg-muted,var(--fg))">
+        <p style="margin:0 0 8px"><strong>1. Install the package</strong></p>
+        <pre style="background:var(--base);border-radius:4px;padding:8px 10px;font-size:0.8rem;overflow-x:auto;margin:0 0 12px">npx -y @owloops/claude-powerline@latest</pre>
+        <p style="margin:0 0 8px"><strong>2. Save your config</strong></p>
+        <p style="margin:0 0 4px">Copy the generated JSON above and save it to:</p>
+        <pre style="background:var(--base);border-radius:4px;padding:8px 10px;font-size:0.8rem;overflow-x:auto;margin:0 0 12px">~/.claude/claude-powerline.json</pre>
+        <p style="margin:0 0 8px"><strong>3. Add to your Claude hooks</strong></p>
+        <p style="margin:0 0 4px">In <code>~/.claude/settings.json</code>, add under <code>hooks</code>:</p>
+        <pre style="background:var(--base);border-radius:4px;padding:8px 10px;font-size:0.8rem;overflow-x:auto;margin:0 0 12px">"PreToolUse": [{ "hooks": [{ "type": "command", "command": "npx @owloops/claude-powerline" }] }]</pre>
+        <p style="margin:0 0 8px"><strong>4. (Optional) Install Nerd Fonts</strong></p>
+        <p style="margin:0 0 4px">For icon support (clock/calendar indicators), install a Nerd Font and set your terminal to use it:</p>
+        <a href="https://www.nerdfonts.com/font-downloads" target="_blank" rel="noopener" style="color:var(--blue,#7aa2f7)">nerdfonts.com/font-downloads</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <div class="preview-float" id="preview-float">
+    <div class="preview-float-header" onclick="document.getElementById('preview-float').classList.toggle('preview-collapsed')">
+      <span class="preview-float-label">
+        ⬛ Terminal Preview
+        <span id="preview-style-label" style="color:var(--cyan);font-weight:600"></span>
+        <span id="preview-theme-label" style="color:var(--purple)"></span>
+      </span>
+      <span class="preview-float-hint">click to collapse ▲</span>
+    </div>
+    <div class="preview-terminal" id="preview-segs"></div>
+  </div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+const state = {
+  theme: 'dark',
+  display: { style: 'minimal', charset: 'unicode', colorCompatibility: 'auto', padding: 1, autoWrap: false },
+  lines: [
+    { segments: [] },
+  ],
+  customColors: {
+    directory: { bg: '#3b4261', fg: '#a9b1d6' },
+    git:       { bg: '#1a1b26', fg: '#7aa2f7' },
+    model:     { bg: '#24283b', fg: '#e0af68' },
+    session:   { bg: '#1a1b26', fg: '#9ece6a' },
+    block:     { bg: '#1e2030', fg: '#bb9af7' },
+    today:     { bg: '#1a1b26', fg: '#f7768e' },
+    weekly:    { bg: '#1a1b26', fg: '#2ac3de' },
+    tmux:      { bg: '#414868', fg: '#c0caf5' },
+    context:   { bg: '#1a1b26', fg: '#7dcfff' },
+    contextWarning:  { bg: '#92400e', fg: '#fbbf24' },
+    contextCritical: { bg: '#991b1b', fg: '#fca5a5' },
+    metrics:   { bg: '#1a1b26', fg: '#a9b1d6' },
+    version:   { bg: '#1a1b26', fg: '#565f89' },
+    env:       { bg: '#1a1b26', fg: '#7aa2f7' },
+  },
+  budget: {
+    session: { amount: '', warningThreshold: 80, type: 'cost' },
+    today:   { amount: '', warningThreshold: 80, type: 'cost' },
+    weekly:  { amount: '', warningThreshold: 80, type: 'cost' },
+    block:   { amount: '', warningThreshold: 80, type: 'tokens' },
+  },
+  modelLimits: {},
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEGMENT DEFINITIONS
+// ─────────────────────────────────────────────────────────────────────────────
+const SEGMENT_DEFS = {
+  directory: {
+    label: 'directory', color: '#3b4261',
+    defaults: { enabled: true, style: 'full' },
+    render(s) {
+      return `
+        <div class="field"><label>Style</label>
+          <select onchange="segProp(this,'style');update()">
+            ${opt(['full','fish','basename'], s.style)}
+          </select></div>`;
+    }
+  },
+  model: {
+    label: 'model', color: '#e0af68',
+    defaults: { enabled: true },
+    render() { return '<p class="hint">No additional options.</p>'; }
+  },
+  git: {
+    label: 'git', color: '#7aa2f7',
+    defaults: { enabled: true, showAheadBehind: true },
+    render(s) {
+      return toggleFields(s, [
+        ['showRepoName','Show repo name'],['showAheadBehind','Show ahead/behind'],
+        ['showWorkingTree','Show working tree'],['showOperation','Show operation'],
+        ['showTag','Show tag'],['showSha','Show SHA'],
+        ['showTimeSinceCommit','Show time since commit'],
+        ['showStashCount','Show stash count'],['showUpstream','Show upstream'],
+      ]);
+    }
+  },
+  session: {
+    label: 'session', color: '#9ece6a',
+    defaults: { enabled: true, type: 'cost' },
+    render(s) {
+      return `
+        <div class="field"><label>Display Type</label>
+          <select onchange="segProp(this,'type');update()">
+            ${opt(['cost','tokens','both','breakdown'], s.type)}
+          </select></div>
+        <div class="field"><label>Cost Source</label>
+          <select onchange="segProp(this,'costSource');update()">
+            <option value="">auto</option>
+            ${opt(['calculated','official'], s.costSource)}
+          </select></div>`;
+    }
+  },
+  block: {
+    label: 'block', color: '#bb9af7',
+    defaults: { enabled: true, type: 'cost' },
+    render(s) {
+      return `
+        <div class="field"><label>Display Type</label>
+          <select onchange="segProp(this,'type');update()">
+            ${opt(['cost','tokens','both','time','weighted'], s.type)}
+          </select></div>
+        <div class="field"><label>Burn Rate</label>
+          <select onchange="segProp(this,'burnType');update()">
+            <option value="">none</option>
+            ${opt(['cost','tokens','both','none'], s.burnType)}
+          </select></div>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show elapsed time</label>
+          <label class="toggle"><input type="checkbox" ${s.showElapsed?'checked':''} onchange="segPropBool(this,'showElapsed');update()"><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <label>Show % of 5h window <span class="new-badge">NEW</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showPercentage?'checked':''} onchange="segPropBool(this,'showPercentage');update()"><span class="slider"></span></label>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label>Percentage mode</label>
+          <select onchange="segProp(this,'percentageMode');update()">
+            ${opt(['left','used'], s.percentageMode||'left')}
+          </select>
+          <p class="hint">left: "83% left" · used: "17% used" — only applies when % is enabled above</p>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
+        <div class="toggle-row">
+          <label>Show icon prefix</label>
+          <label class="toggle"><input type="checkbox" ${s.showIcon!==false?'checked':''} onchange="segPropBool(this,'showIcon');update()"><span class="slider"></span></label>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label>Custom icon <span style="color:var(--text2);font-weight:normal;font-size:0.72rem">(leave blank for default  clock)</span></label>
+          <input type="text" value="${s.customIcon||''}" placeholder="\uF017 or any char" onchange="segProp(this,'customIcon');update()">
+          <p class="hint">Default: \uF017 (nerd font clock). Any single character or emoji works.</p>
+        </div>`;
+    }
+  },
+  today: {
+    label: 'today', color: '#f7768e',
+    defaults: { enabled: true, type: 'cost' },
+    render(s) {
+      return `
+        <div class="field"><label>Display Type</label>
+          <select onchange="segProp(this,'type');update()">
+            ${opt(['cost','tokens','both','breakdown'], s.type)}
+          </select></div>`;
+    }
+  },
+  weekly: {
+    label: 'weekly', color: '#2ac3de',
+    defaults: { enabled: true, type: 'cost' },
+    render(s) {
+      return `
+        <div class="field"><label>Display Type</label>
+          <select onchange="segProp(this,'type');update()">
+            ${opt(['cost','tokens','both','breakdown'], s.type)}
+          </select></div>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show time until weekly reset <span class="new-badge">NEW</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showTimeLeft?'checked':''} onchange="segPropBool(this,'showTimeLeft');update()"><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <label>Show % of week <span class="new-badge">NEW</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showPercentage?'checked':''} onchange="segPropBool(this,'showPercentage');update()"><span class="slider"></span></label>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label>Percentage mode</label>
+          <select onchange="segProp(this,'percentageMode');update()">
+            ${opt(['left','used'], s.percentageMode||'left')}
+          </select>
+          <p class="hint">left: "52% left" · used: "48% used" — only applies when % is enabled above</p>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
+        <div class="toggle-row">
+          <label>Show icon prefix</label>
+          <label class="toggle"><input type="checkbox" ${s.showIcon!==false?'checked':''} onchange="segPropBool(this,'showIcon');update()"><span class="slider"></span></label>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label>Custom icon <span style="color:var(--text2);font-weight:normal;font-size:0.72rem">(leave blank for default calendar)</span></label>
+          <input type="text" value="${s.customIcon||''}" placeholder="\uF073 or any char" onchange="segProp(this,'customIcon');update()">
+          <p class="hint">Default: \uF073 (nerd font calendar). Any single character or emoji works.</p>
+        </div>`;
+    }
+  },
+  context: {
+    label: 'context', color: '#7dcfff',
+    defaults: { enabled: true, displayStyle: 'text' },
+    render(s) {
+      return `
+        <div class="field"><label>Display Style</label>
+          <select onchange="segProp(this,'displayStyle');update()">
+            ${opt(['text','ball','bar','blocks','blocks-line','capped','dots','filled','geometric','line','squares'], s.displayStyle)}
+          </select>
+          <p class="hint" style="margin-top:4px">bar: uses your terminal's configurable bar symbols · blocks: always █░ · both look the same with default symbols</p></div>
+        <div class="field"><label>Percentage Mode</label>
+          <select onchange="segProp(this,'percentageMode');update()">
+            ${opt(['remaining','used'], s.percentageMode)}
+          </select></div>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show percentage only</label>
+          <label class="toggle"><input type="checkbox" ${s.showPercentageOnly?'checked':''} onchange="segPropBool(this,'showPercentageOnly');update()"><span class="slider"></span></label>
+        </div>
+        <div class="field" style="margin-top:10px"><label>Autocompact buffer (tokens)</label>
+          <input type="number" value="${s.autocompactBuffer||33000}" onchange="segProp(this,'autocompactBuffer',true);update()">
+        </div>`;
+    }
+  },
+  metrics: {
+    label: 'metrics', color: '#a9b1d6',
+    defaults: { enabled: true, showResponseTime: true, showDuration: true, showMessageCount: true },
+    render(s) {
+      return toggleFields(s, [
+        ['showResponseTime','Response time'],['showLastResponseTime','Last response time'],
+        ['showDuration','Session duration'],['showMessageCount','Message count'],
+        ['showLinesAdded','Lines added'],['showLinesRemoved','Lines removed'],
+      ]);
+    }
+  },
+  tmux: {
+    label: 'tmux', color: '#414868',
+    defaults: { enabled: true },
+    render() { return '<p class="hint">No additional options.</p>'; }
+  },
+  version: {
+    label: 'version', color: '#565f89',
+    defaults: { enabled: true },
+    render() { return '<p class="hint">No additional options.</p>'; }
+  },
+  sessionId: {
+    label: 'sessionId', color: '#7aa2f7',
+    defaults: { enabled: true },
+    render(s) {
+      return `<div class="toggle-row">
+        <label>Show "ID:" label</label>
+        <label class="toggle"><input type="checkbox" ${s.showIdLabel!==false?'checked':''} onchange="segPropBool(this,'showIdLabel');update()"><span class="slider"></span></label>
+      </div>`;
+    }
+  },
+  env: {
+    label: 'env', color: '#7aa2f7',
+    defaults: { enabled: true, variable: '' },
+    render(s) {
+      return `
+        <div class="field"><label>Environment variable name</label>
+          <input type="text" value="${s.variable||''}" placeholder="MY_VAR" onchange="segProp(this,'variable');update()"></div>
+        <div class="field"><label>Prefix label (optional)</label>
+          <input type="text" value="${s.prefix||''}" placeholder="leave empty to use variable name" onchange="segProp(this,'prefix');update()"></div>`;
+    }
+  },
+};
+
+const COLOR_SEGMENTS = ['directory','git','model','session','block','today','weekly','tmux','context','contextWarning','contextCritical','metrics','version','env'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function opt(values, current) {
+  return values.map(v => `<option value="${v}" ${v===current?'selected':''}>${v}</option>`).join('');
+}
+function toggleFields(s, fields) {
+  return fields.map(([key, label]) =>
+    `<div class="toggle-row">
+      <label>${label}</label>
+      <label class="toggle"><input type="checkbox" ${s[key]?'checked':''} onchange="segPropBool(this,'${key}');update()"><span class="slider"></span></label>
+    </div>`
+  ).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVE SEGMENT REFERENCE
+// ─────────────────────────────────────────────────────────────────────────────
+let _activeSegEl = null;
+
+function segProp(el, key, asNumber=false) {
+  const seg = getSegFromEl(el);
+  if (!seg) return;
+  seg[key] = asNumber ? Number(el.value) : el.value;
+}
+function segPropBool(el, key) {
+  const seg = getSegFromEl(el);
+  if (!seg) return;
+  seg[key] = el.checked;
+}
+function getSegFromEl(el) {
+  const card = el.closest('[data-li][data-si]');
+  if (!card) return null;
+  const li = +card.dataset.li, si = +card.dataset.si;
+  return state.lines[li]?.segments[si];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RENDER LINES UI
+// ─────────────────────────────────────────────────────────────────────────────
+function renderLines() {
+  const container = document.getElementById('lines-container');
+  container.innerHTML = state.lines.map((line, li) => {
+    const segsHtml = line.segments.map((seg, si) => renderSegCard(seg, li, si)).join('');
+    const availableSegs = Object.keys(SEGMENT_DEFS).filter(k =>
+      !line.segments.find(s => s._type === k) || k === 'env'
+    );
+    return `
+      <div class="line-card">
+        <div class="line-header" onclick="toggleLineBody(${li})">
+          <span class="line-num">Line ${li+1}</span>
+          <span class="line-title">${line.segments.filter(s=>s.enabled).map(s=>s._type).join(' · ') || 'empty'}</span>
+          <div style="display:flex;gap:3px;margin-left:auto" onclick="event.stopPropagation()">
+            <button class="reorder-btn" title="Move line up" onclick="moveLine(${li},-1)" ${li===0?'disabled':''}>▲</button>
+            <button class="reorder-btn" title="Move line down" onclick="moveLine(${li},1)" ${li===state.lines.length-1?'disabled':''}>▼</button>
+            ${state.lines.length > 1 ? `<button class="btn-remove" style="margin-left:2px" onclick="removeLine(event,${li})">✕</button>` : ''}
+          </div>
+        </div>
+        <div class="line-body" id="line-body-${li}">
+          ${segsHtml}
+          <div class="add-seg">
+            <select id="add-seg-select-${li}">
+              ${availableSegs.map(k=>`<option value="${k}">${k}</option>`).join('')}
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="addSegment(${li})">+ Add</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderSegCard(seg, li, si) {
+  const def = SEGMENT_DEFS[seg._type];
+  if (!def) return '';
+  const bodyId = `seg-body-${li}-${si}`;
+  const total = state.lines[li].segments.length;
+  return `
+    <div class="seg-card" data-li="${li}" data-si="${si}" draggable="true"
+      ondragstart="onSegDragStart(event,${li},${si})"
+      ondragend="onSegDragEnd(event)"
+      ondragover="onSegDragOver(event,${li},${si})"
+      ondrop="onSegDrop(event,${li},${si})">
+      <div class="seg-header">
+        <span class="drag-handle" title="Drag to reorder">⠿</span>
+        <span class="seg-name">${def.label}</span>
+        <div style="display:flex;gap:2px;margin-left:auto;align-items:center">
+          <button class="reorder-btn" title="Move left" onclick="moveSeg(${li},${si},-1)" ${si===0?'disabled':''}>◀</button>
+          <button class="reorder-btn" title="Move right" onclick="moveSeg(${li},${si},1)" ${si===total-1?'disabled':''}>▶</button>
+          <label class="toggle" style="margin:0 4px"><input type="checkbox" ${seg.enabled?'checked':''} onchange="segPropBool(this,'enabled');update()"><span class="slider"></span></label>
+          <button class="btn-remove" onclick="removeSegment(${li},${si})">✕</button>
+          <button style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;padding:2px 7px;border-radius:4px;font-size:0.72rem;margin-left:2px" onclick="toggleEl('${bodyId}')">options</button>
+        </div>
+      </div>
+      <div class="seg-body" id="${bodyId}">
+        ${def.render(seg)}
+      </div>
+    </div>`;
+}
+
+function toggleEl(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('hidden');
+}
+function toggleLineBody(li) {
+  const el = document.getElementById(`line-body-${li}`);
+  if (el) el.style.display = el.style.display === 'none' ? '' : el.style.display;
+}
+
+// ── Reorder helpers ──────────────────────────────────────────────────────────
+function moveSeg(li, si, dir) {
+  const segs = state.lines[li].segments;
+  const ni = si + dir;
+  if (ni < 0 || ni >= segs.length) return;
+  [segs[si], segs[ni]] = [segs[ni], segs[si]];
+  render();
+}
+
+function moveLine(li, dir) {
+  const ni = li + dir;
+  if (ni < 0 || ni >= state.lines.length) return;
+  [state.lines[li], state.lines[ni]] = [state.lines[ni], state.lines[li]];
+  render();
+}
+
+// ── Drag-and-drop for segment cards ─────────────────────────────────────────
+let _dragSrc = null;
+
+function onSegDragStart(e, li, si) {
+  _dragSrc = { li, si };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', `${li}:${si}`);
+  // Defer opacity so the ghost image isn't transparent
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`.seg-card[data-li="${li}"][data-si="${si}"]`);
+    if (card) card.classList.add('dragging');
+  });
+}
+
+function onSegDragEnd(e) {
+  document.querySelectorAll('.seg-card.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('.seg-card.drag-over').forEach(el => el.classList.remove('drag-over'));
+  _dragSrc = null;
+}
+
+function onSegDragOver(e, li, si) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.seg-card.drag-over').forEach(el => el.classList.remove('drag-over'));
+  if (!_dragSrc || (_dragSrc.li === li && _dragSrc.si === si)) return;
+  const card = document.querySelector(`.seg-card[data-li="${li}"][data-si="${si}"]`);
+  if (card) card.classList.add('drag-over');
+}
+
+function onSegDrop(e, li, si) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!_dragSrc || (_dragSrc.li === li && _dragSrc.si === si)) return;
+
+  const srcSegs = state.lines[_dragSrc.li].segments;
+  const [moved] = srcSegs.splice(_dragSrc.si, 1);
+
+  const dstSegs = state.lines[li].segments;
+  // Adjust destination index if same line and src was before dst
+  const dstIdx = (_dragSrc.li === li && _dragSrc.si < si) ? si - 1 : si;
+  dstSegs.splice(dstIdx, 0, moved);
+
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINE / SEGMENT MUTATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+function addLine() {
+  state.lines.push({ segments: [] });
+  render();
+}
+function removeLine(e, li) {
+  e.stopPropagation();
+  state.lines.splice(li, 1);
+  render();
+}
+function addSegment(li) {
+  const sel = document.getElementById(`add-seg-select-${li}`);
+  const type = sel.value;
+  const def = SEGMENT_DEFS[type];
+  if (!def) return;
+  state.lines[li].segments.push({ _type: type, ...JSON.parse(JSON.stringify(def.defaults)) });
+  render();
+}
+function removeSegment(li, si) {
+  state.lines[li].segments.splice(si, 1);
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUDGET UI
+// ─────────────────────────────────────────────────────────────────────────────
+function renderBudget() {
+  const items = ['session','today','weekly','block'];
+  const labels = { session:'Session', today:'Today', weekly:'Weekly', block:'Block (5h window)' };
+  document.getElementById('budget-items').innerHTML = items.map(key => {
+    const b = state.budget[key];
+    return `
+      <div style="margin-bottom:14px">
+        <label style="color:var(--text);font-weight:600;font-size:0.83rem;margin-bottom:6px;display:block">${labels[key]}</label>
+        <div class="grid-3">
+          <div class="field">
+            <label>Amount</label>
+            <input type="number" value="${b.amount||''}" placeholder="unlimited" step="0.01"
+              onchange="state.budget['${key}'].amount=this.value?Number(this.value):'';update()">
+          </div>
+          <div class="field">
+            <label>Warning %</label>
+            <input type="number" value="${b.warningThreshold||80}" min="1" max="100"
+              onchange="state.budget['${key}'].warningThreshold=Number(this.value);update()">
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <select onchange="state.budget['${key}'].type=this.value;update()">
+              ${opt(['cost','tokens'], b.type)}
+            </select>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOM COLORS UI
+// ─────────────────────────────────────────────────────────────────────────────
+function renderColorGrid() {
+  const labels = {
+    directory:'Directory', git:'Git', model:'Model', session:'Session',
+    block:'Block', today:'Today', weekly:'Weekly', tmux:'Tmux',
+    context:'Context', contextWarning:'Context Warning', contextCritical:'Context Critical',
+    metrics:'Metrics', version:'Version', env:'Env'
+  };
+  document.getElementById('color-grid').innerHTML = COLOR_SEGMENTS.map(key => {
+    const c = state.customColors[key] || { bg:'#1a1b26', fg:'#a9b1d6' };
+    return `
+      <div style="margin-bottom:10px">
+        <label style="color:var(--text);font-weight:600;font-size:0.8rem;margin-bottom:5px;display:flex;align-items:center;gap:6px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${c.bg};border:1px solid ${c.fg};display:inline-block"></span>
+          ${labels[key]||key}
+        </label>
+        <div class="grid-2">
+          <div class="field"><label>Background</label>
+            <input type="color" value="${c.bg}" onchange="state.customColors['${key}'].bg=this.value;update()">
+          </div>
+          <div class="field"><label>Foreground</label>
+            <input type="color" value="${c.fg}" onchange="state.customColors['${key}'].fg=this.value;update()">
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODEL LIMITS UI
+// ─────────────────────────────────────────────────────────────────────────────
+function renderModelLimits() {
+  const container = document.getElementById('model-limits');
+  const entries = Object.entries(state.modelLimits);
+  if (entries.length === 0) {
+    container.innerHTML = '<p class="hint">No custom limits set.</p>';
+    return;
+  }
+  container.innerHTML = entries.map(([name, limit]) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="text" value="${name}" style="flex:1" readonly>
+      <input type="number" value="${limit}" style="width:120px"
+        onchange="state.modelLimits['${name}']=Number(this.value);update()">
+      <button class="btn btn-secondary btn-sm" onclick="delete state.modelLimits['${name}'];renderModelLimits();update()">✕</button>
+    </div>`).join('');
+}
+
+function addModelLimit() {
+  const name = document.getElementById('new-model-name').value.trim();
+  const limit = document.getElementById('new-model-limit').value;
+  if (!name || !limit) return;
+  state.modelLimits[name] = Number(limit);
+  document.getElementById('new-model-name').value = '';
+  document.getElementById('new-model-limit').value = '';
+  renderModelLimits();
+  update();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THEME CHANGE
+// ─────────────────────────────────────────────────────────────────────────────
+function onThemeChange() {
+  state.theme = document.getElementById('theme').value;
+  const isCustom = state.theme === 'custom';
+  document.getElementById('custom-colors-section').style.display = isCustom ? '' : 'none';
+  if (isCustom) renderColorGrid();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUILD CONFIG JSON
+// ─────────────────────────────────────────────────────────────────────────────
+function buildConfig() {
+  const cfg = {};
+
+  // Theme
+  cfg.theme = state.theme;
+
+  // Display
+  cfg.display = {
+    style: document.getElementById('display-style').value,
+    charset: document.getElementById('display-charset').value,
+    colorCompatibility: document.getElementById('display-color').value,
+    padding: Number(document.getElementById('display-padding').value),
+    autoWrap: document.getElementById('display-autowrap').checked,
+    lines: state.lines.map(line => ({
+      segments: Object.fromEntries(
+        line.segments.filter(s => s._type).map(s => {
+          const { _type, ...rest } = s;
+          return [_type, rest];
+        })
+      )
+    }))
+  };
+
+  // Custom colors
+  if (state.theme === 'custom') {
+    cfg.colors = { custom: {} };
+    for (const key of COLOR_SEGMENTS) {
+      cfg.colors.custom[key] = { ...state.customColors[key] };
+    }
+  }
+
+  // Budget
+  const budgetOut = {};
+  for (const [key, b] of Object.entries(state.budget)) {
+    const item = {};
+    if (b.amount !== '' && b.amount !== null && b.amount !== undefined) {
+      item.amount = Number(b.amount);
+    }
+    if (b.warningThreshold && b.warningThreshold !== 80) item.warningThreshold = Number(b.warningThreshold);
+    if (b.type) item.type = b.type;
+    if (Object.keys(item).length > 0) budgetOut[key] = item;
+  }
+  if (Object.keys(budgetOut).length > 0) cfg.budget = budgetOut;
+
+  // Model limits
+  if (Object.keys(state.modelLimits).length > 0) cfg.modelContextLimits = { ...state.modelLimits };
+
+  return cfg;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREVIEW
+// ─────────────────────────────────────────────────────────────────────────────
+const THEME_PALETTES = {
+  dark: {
+    directory:{bg:'#3b4261',fg:'#a9b1d6'}, git:{bg:'#1a1b26',fg:'#7aa2f7'},
+    model:{bg:'#24283b',fg:'#e0af68'}, session:{bg:'#1a1b26',fg:'#9ece6a'},
+    block:{bg:'#1e2030',fg:'#bb9af7'}, today:{bg:'#1a1b26',fg:'#f7768e'},
+    weekly:{bg:'#1a1b26',fg:'#2ac3de'}, tmux:{bg:'#414868',fg:'#c0caf5'},
+    context:{bg:'#1a1b26',fg:'#7dcfff'}, metrics:{bg:'#1a1b26',fg:'#a9b1d6'},
+    version:{bg:'#1a1b26',fg:'#565f89'}, sessionId:{bg:'#1a1b26',fg:'#7aa2f7'}, env:{bg:'#1a1b26',fg:'#7aa2f7'},
+  },
+  light: {
+    directory:{bg:'#c8d3f5',fg:'#2e3440'}, git:{bg:'#dfe4f2',fg:'#2d5a9e'},
+    model:{bg:'#eef0f8',fg:'#7c3aed'}, session:{bg:'#d8f3dc',fg:'#1b4332'},
+    block:{bg:'#e8d5f5',fg:'#4a1072'}, today:{bg:'#ffd6e0',fg:'#9d174d'},
+    weekly:{bg:'#c1e1ec',fg:'#0a3d62'}, tmux:{bg:'#e8e8f0',fg:'#374151'},
+    context:{bg:'#d0eeff',fg:'#1a3a5c'}, metrics:{bg:'#f0f0f0',fg:'#374151'},
+    version:{bg:'#e0e0e8',fg:'#6b7280'}, sessionId:{bg:'#d0eeff',fg:'#1a3a5c'}, env:{bg:'#d0eeff',fg:'#1a3a5c'},
+  },
+  nord: {
+    directory:{bg:'#4c566a',fg:'#eceff4'}, git:{bg:'#3b4252',fg:'#88c0d0'},
+    model:{bg:'#434c5e',fg:'#ebcb8b'}, session:{bg:'#3b4252',fg:'#a3be8c'},
+    block:{bg:'#4c566a',fg:'#b48ead'}, today:{bg:'#3b4252',fg:'#bf616a'},
+    weekly:{bg:'#3b4252',fg:'#88c0d0'}, tmux:{bg:'#2e3440',fg:'#81a1c1'},
+    context:{bg:'#2e3440',fg:'#8fbcbb'}, metrics:{bg:'#3b4252',fg:'#d8dee9'},
+    version:{bg:'#2e3440',fg:'#616e88'}, sessionId:{bg:'#3b4252',fg:'#88c0d0'}, env:{bg:'#3b4252',fg:'#88c0d0'},
+  },
+  'tokyo-night': {
+    directory:{bg:'#3b4261',fg:'#a9b1d6'}, git:{bg:'#1a1b26',fg:'#7aa2f7'},
+    model:{bg:'#24283b',fg:'#e0af68'}, session:{bg:'#1a1b26',fg:'#9ece6a'},
+    block:{bg:'#1e2030',fg:'#bb9af7'}, today:{bg:'#1a1b26',fg:'#f7768e'},
+    weekly:{bg:'#1a1b26',fg:'#2ac3de'}, tmux:{bg:'#414868',fg:'#c0caf5'},
+    context:{bg:'#1a1b26',fg:'#7dcfff'}, metrics:{bg:'#1a1b26',fg:'#a9b1d6'},
+    version:{bg:'#1a1b26',fg:'#565f89'}, sessionId:{bg:'#1a1b26',fg:'#7aa2f7'}, env:{bg:'#1a1b26',fg:'#7aa2f7'},
+  },
+  'rose-pine': {
+    directory:{bg:'#403d52',fg:'#e0def4'}, git:{bg:'#1f1d2e',fg:'#9ccfd8'},
+    model:{bg:'#26233a',fg:'#f6c177'}, session:{bg:'#1f1d2e',fg:'#31748f'},
+    block:{bg:'#393552',fg:'#c4a7e7'}, today:{bg:'#1f1d2e',fg:'#eb6f92'},
+    weekly:{bg:'#1f1d2e',fg:'#9ccfd8'}, tmux:{bg:'#6e6a86',fg:'#e0def4'},
+    context:{bg:'#1f1d2e',fg:'#ebbcba'}, metrics:{bg:'#26233a',fg:'#e0def4'},
+    version:{bg:'#1f1d2e',fg:'#6e6a86'}, sessionId:{bg:'#1f1d2e',fg:'#9ccfd8'}, env:{bg:'#1f1d2e',fg:'#9ccfd8'},
+  },
+  gruvbox: {
+    directory:{bg:'#665c54',fg:'#ebdbb2'}, git:{bg:'#3c3836',fg:'#83a598'},
+    model:{bg:'#504945',fg:'#fabd2f'}, session:{bg:'#3c3836',fg:'#b8bb26'},
+    block:{bg:'#504945',fg:'#d3869b'}, today:{bg:'#3c3836',fg:'#fb4934'},
+    weekly:{bg:'#3c3836',fg:'#83a598'}, tmux:{bg:'#7c6f64',fg:'#282828'},
+    context:{bg:'#3c3836',fg:'#8ec07c'}, metrics:{bg:'#504945',fg:'#ebdbb2'},
+    version:{bg:'#282828',fg:'#928374'}, sessionId:{bg:'#3c3836',fg:'#83a598'}, env:{bg:'#3c3836',fg:'#83a598'},
+  },
+};
+// Build a bar string for context display styles
+function barStr(style, usedPct) {
+  const total = 10;
+  const filled = Math.round(usedPct / 100 * total);
+  const empty = total - filled;
+  const styles = {
+    ball:        { f:'─', e:'─', marker:'●' },
+    blocks:      { f:'█', e:'░' },
+    'blocks-line':{ f:'█', e:'─' },
+    capped:      { f:'━', e:'┄', cap:'╸' },
+    dots:        { f:'●', e:'○' },
+    filled:      { f:'■', e:'□' },
+    geometric:   { f:'▰', e:'▱' },
+    line:        { f:'━', e:'┄' },
+    squares:     { f:'◼', e:'◻' },
+    bar:         { f:'█', e:'░' },
+  };
+  const s = styles[style] || styles.blocks;
+  if (s.marker) {
+    const pos = Math.min(filled, total - 1);
+    return s.f.repeat(pos) + s.marker + s.e.repeat(total - pos - 1);
+  }
+  if (s.cap) {
+    if (filled === 0) return s.cap + s.e.repeat(total - 1);
+    if (filled >= total) return s.f.repeat(total);
+    return s.f.repeat(filled - 1) + s.cap + s.e.repeat(empty);
+  }
+  return s.f.repeat(filled) + s.e.repeat(empty);
+}
+
+// Return a realistic preview label that reflects the segment's current config
+function getSegLabel(seg) {
+  switch (seg._type) {
+
+    case 'directory':
+      if (seg.style === 'basename') return 'myapp';
+      if (seg.style === 'fish')     return '~/p/myapp';
+      return '~/projects/myapp';
+
+    case 'model':     return ' claude-sonnet';
+    case 'git':       return ' main ✓';
+    case 'tmux':      return 'tmux:0';
+    case 'version':   return 'v1.21';
+    case 'sessionId': return (seg.showIdLabel !== false ? ' ' : '') + 'abc123';
+    case 'env':       return (seg.prefix || seg.variable || 'MY_VAR') + ': val';
+
+    case 'session': {
+      const t = seg.type || 'cost';
+      if (t === 'tokens')    return '42.1k tok';
+      if (t === 'both')      return '$0.42 (42.1k)';
+      if (t === 'breakdown') return '↓12k ↑8k ◌22k';
+      return '$0.42';
+    }
+
+    case 'today': {
+      const t = seg.type || 'cost';
+      if (t === 'tokens')    return '350k tok';
+      if (t === 'both')      return '$3.50 (350k)';
+      if (t === 'breakdown') return '↓120k ↑80k ◌150k';
+      return '$3.50';
+    }
+
+    case 'block': {
+      const blockIcon = seg.showIcon !== false ? (seg.customIcon || '🕗') + ' ' : '';
+      const t = seg.type || 'cost';
+      if (t === 'time') return (seg.showIcon !== false ? (seg.customIcon || '🕗') + ' ' : '') + '2h 30m';
+      let main = t === 'tokens'   ? '120k tok'
+               : t === 'both'     ? '$1.20 (120k)'
+               : t === 'weighted' ? '240k (weighted)'
+               :                    '$1.20';
+      const burn = seg.burnType;
+      if (burn === 'cost')  main += ' | $0.50/h';
+      else if (burn === 'tokens') main += ' | 50k/h';
+      else if (burn === 'both')   main += ' | $0.50/h / 50k/h';
+      if (seg.showElapsed)   main += ' (30m used, 2h 30m left)';
+      else                   main += ' (2h 30m left)';
+      if (seg.showPercentage) {
+        const pctMode = seg.percentageMode || 'left';
+        main += pctMode === 'used' ? ' 17% used' : ' 83% left';
+      }
+      return blockIcon + main;
+    }
+
+    case 'weekly': {
+      const weeklyIcon = seg.showIcon !== false ? (seg.customIcon || '📅') + ' ' : '';
+      const t = seg.type || 'cost';
+      let main = t === 'tokens'    ? '1.2M tok'
+               : t === 'both'      ? '$12.40 (1.2M)'
+               : t === 'breakdown' ? '↓400k ↑300k ◌500k'
+               :                     '$12.40';
+      const extras = [];
+      if (seg.showTimeLeft)   extras.push('3d 14h left');
+      if (seg.showPercentage) {
+        const pctMode = seg.percentageMode || 'left';
+        extras.push(pctMode === 'used' ? '48% used' : '52% left');
+      }
+      if (extras.length) main += ` (${extras.join(', ')})`;
+      return weeklyIcon + main;
+    }
+
+    case 'context': {
+      const ds = seg.displayStyle || 'text';
+      const isBar = ds !== 'text';
+      const pctMode = seg.percentageMode || (isBar ? 'used' : 'remaining');
+      const pct = pctMode === 'remaining' ? '35%' : '65%';
+      const bar = isBar ? barStr(ds, 65) + ' ' : '🕐 ';
+      if (seg.showPercentageOnly) return bar + pct;
+      return bar + '45,000 (' + pct + ')';
+    }
+
+    case 'metrics': {
+      const parts = [];
+      if (seg.showLastResponseTime) parts.push('←1.0s');
+      if (seg.showResponseTime !== false) parts.push('⚡1.2s');
+      if (seg.showDuration !== false) parts.push('⏱45m');
+      if (seg.showMessageCount !== false) parts.push('💬12');
+      if (seg.showLinesAdded !== false) parts.push('+42');
+      if (seg.showLinesRemoved !== false) parts.push('-8');
+      return parts.length ? parts.join(' ') : '⚡active';
+    }
+
+    default: return seg._type;
+  }
+}
+
+function getSegColors(type) {
+  if (state.theme === 'custom') {
+    return {
+      bg: state.customColors[type]?.bg || '#1a1b26',
+      fg: state.customColors[type]?.fg || '#a9b1d6',
+    };
+  }
+  const palette = THEME_PALETTES[state.theme] || THEME_PALETTES['dark'];
+  return palette[type] || { bg: '#1a1b26', fg: '#a9b1d6' };
+}
+
+// SVG powerline triangle: filled triangle pointing right
+// bg = color of the "blade", nextBg = background behind it
+function plArrow(bg, nextBg, h, w) {
+  const half = h / 2;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;flex-shrink:0;overflow:visible" xmlns="http://www.w3.org/2000/svg"><rect width="${w}" height="${h}" fill="${nextBg}"/><polygon points="0,0 ${w},${half} 0,${h}" fill="${bg}"/></svg>`;
+}
+
+function renderLine(segs, style) {
+  const H = 26; // segment height px
+  const AW = 11; // arrow width px
+  const MONO = 'font-family:monospace,monospace;font-size:12px;';
+
+  if (segs.length === 0) return '';
+
+  let html = `<div class="preview-line">`;
+
+  if (style === 'powerline') {
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const { bg, fg } = getSegColors(s._type);
+      const label = getSegLabel(s);
+      const isLast = i === segs.length - 1;
+      const nextBg = isLast ? 'transparent' : getSegColors(segs[i+1]._type).bg;
+      // left padding: first seg normal, subsequent add extra for visual balance after arrow
+      const pl = i === 0 ? '8px' : '10px';
+      // right padding: leave room for the arrow (arrow overlaps nothing, it's beside the seg)
+      html += `<span style="display:inline-flex;align-items:center;background:${bg};color:${fg};padding:0 6px 0 ${pl};height:${H}px;white-space:nowrap;${MONO}">${label}</span>`;
+      html += plArrow(bg, nextBg, H, AW);
+    }
+
+  } else if (style === 'capsule') {
+    for (const s of segs) {
+      const { bg, fg } = getSegColors(s._type);
+      html += `<span style="display:inline-flex;align-items:center;background:${bg};color:${fg};padding:0 11px;height:${H}px;border-radius:${H/2}px;margin-right:5px;white-space:nowrap;${MONO}">${getSegLabel(s)}</span>`;
+    }
+
+  } else if (style === 'tui') {
+    for (const s of segs) {
+      const { bg, fg } = getSegColors(s._type);
+      html += `<span style="display:inline-flex;align-items:center;color:${fg};border:1px solid ${fg};background:${bg};padding:0 8px;height:${H}px;border-radius:3px;margin-right:6px;white-space:nowrap;${MONO}">${getSegLabel(s)}</span>`;
+    }
+
+  } else {
+    // minimal — flat blocks, very faint arrow separator
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const { bg, fg } = getSegColors(s._type);
+      const isLast = i === segs.length - 1;
+      const nextBg = isLast ? 'transparent' : getSegColors(segs[i+1]._type).bg;
+      html += `<span style="display:inline-flex;align-items:center;background:${bg};color:${fg};padding:0 10px;height:${H}px;white-space:nowrap;${MONO}">${getSegLabel(s)}</span>`;
+      if (!isLast) {
+        // Use same SVG triangle but at 30% opacity for the subtle minimal look
+        html += `<svg width="${AW}" height="${H}" viewBox="0 0 ${AW} ${H}" style="display:block;flex-shrink:0;opacity:0.35" xmlns="http://www.w3.org/2000/svg"><rect width="${AW}" height="${H}" fill="${nextBg}"/><polygon points="0,0 ${AW},${H/2} 0,${H}" fill="${bg}"/></svg>`;
+      }
+    }
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function renderPreview() {
+  const style = document.getElementById('display-style')?.value || 'minimal';
+  const theme = state.theme;
+
+  // Update labels in floating bar header
+  const styleLabel = document.getElementById('preview-style-label');
+  const themeLabel = document.getElementById('preview-theme-label');
+  if (styleLabel) styleLabel.textContent = style;
+  if (themeLabel) themeLabel.textContent = theme;
+
+  const hasAny = state.lines.some(l => l.segments.some(s => s.enabled));
+  if (!hasAny) {
+    document.getElementById('preview-segs').innerHTML =
+      '<span style="color:#555;font-size:0.75rem;font-style:italic">No segments enabled</span>';
+    return;
+  }
+
+  const linesHtml = state.lines
+    .map(l => renderLine(l.segments.filter(s => s.enabled), style))
+    .filter(Boolean)
+    .join('');
+
+  document.getElementById('preview-segs').innerHTML = linesHtml;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATE / RENDER
+// ─────────────────────────────────────────────────────────────────────────────
+function update() {
+  const cfg = buildConfig();
+  document.getElementById('json-output').textContent = JSON.stringify(cfg, null, 2);
+  renderPreview();
+}
+
+function render() {
+  renderLines();
+  renderBudget();
+  renderModelLimits();
+  update();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPORT
+// ─────────────────────────────────────────────────────────────────────────────
+function importConfig() {
+  const raw = document.getElementById('import-json').value.trim();
+  if (!raw) return;
+  try {
+    const cfg = JSON.parse(raw);
+
+    if (cfg.theme) {
+      state.theme = cfg.theme;
+      document.getElementById('theme').value = cfg.theme;
+      onThemeChange();
+    }
+
+    if (cfg.display) {
+      const d = cfg.display;
+      if (d.style) document.getElementById('display-style').value = d.style;
+      if (d.charset) document.getElementById('display-charset').value = d.charset;
+      if (d.colorCompatibility) document.getElementById('display-color').value = d.colorCompatibility;
+      if (d.padding !== undefined) document.getElementById('display-padding').value = d.padding;
+      if (d.autoWrap !== undefined) document.getElementById('display-autowrap').checked = d.autoWrap;
+
+      if (Array.isArray(d.lines)) {
+        state.lines = d.lines.map(line => ({
+          segments: Object.entries(line.segments || {}).map(([type, conf]) => ({
+            _type: type, ...conf
+          }))
+        }));
+      }
+    }
+
+    if (cfg.colors?.custom) {
+      for (const [k, v] of Object.entries(cfg.colors.custom)) {
+        if (state.customColors[k]) state.customColors[k] = { ...v };
+      }
+    }
+
+    if (cfg.budget) {
+      for (const [k, v] of Object.entries(cfg.budget)) {
+        if (state.budget[k]) state.budget[k] = { amount: v.amount||'', warningThreshold: v.warningThreshold||80, type: v.type||'cost' };
+      }
+    }
+
+    if (cfg.modelContextLimits) state.modelLimits = { ...cfg.modelContextLimits };
+
+    render();
+    document.getElementById('import-json').value = '';
+    alert('Config imported successfully!');
+  } catch(e) {
+    alert('Invalid JSON: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COPY / DOWNLOAD
+// ─────────────────────────────────────────────────────────────────────────────
+async function copyConfig() {
+  const text = document.getElementById('json-output').textContent;
+  await navigator.clipboard.writeText(text);
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = '✓ Copied!';
+  btn.className = 'btn btn-success btn-sm';
+  setTimeout(() => { btn.textContent = 'Copy JSON'; btn.className = 'btn btn-primary btn-sm'; }, 2000);
+}
+
+function downloadConfig() {
+  const text = document.getElementById('json-output').textContent;
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = '.claude-powerline.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function toggleSection(id) {
+  document.getElementById(id).classList.toggle('collapsed');
+}
+
+function toggleGuide() {
+  const body = document.getElementById('guide-body');
+  const chevron = document.getElementById('guide-chevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  chevron.textContent = open ? '▴' : '▾';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT — default config
+// ─────────────────────────────────────────────────────────────────────────────
+state.lines = [
+  {
+    segments: [
+      { _type:'directory', enabled:true, style:'full' },
+      { _type:'model', enabled:true },
+      { _type:'session', enabled:true, type:'cost' },
+      { _type:'block', enabled:true, type:'cost', showPercentage:false },
+      { _type:'context', enabled:true, displayStyle:'text' },
+      { _type:'git', enabled:true, showAheadBehind:true },
+    ]
+  }
+];
+
+render();
+</script>
+</body>
+</html>

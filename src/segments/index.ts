@@ -18,7 +18,10 @@ export type {
   MetricsSegmentConfig,
   BlockSegmentConfig,
   TodaySegmentConfig,
+  WeeklySegmentConfig,
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
 } from "./renderer";
+export { WeeklyProvider } from "./weekly";
+export type { WeeklyInfo } from "./weekly";

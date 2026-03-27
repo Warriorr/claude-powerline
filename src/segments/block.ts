@@ -19,6 +19,7 @@ export interface BlockInfo {
   tokens: number | null;
   weightedTokens: number | null;
   timeRemaining: number | null;
+  timeElapsed: number | null;
   burnRate: number | null;
   tokenBurnRate: number | null;
 }
@@ -214,6 +215,7 @@ export class BlockProvider {
           tokens: null,
           weightedTokens: null,
           timeRemaining: null,
+          timeElapsed: null,
           burnRate: null,
           tokenBurnRate: null,
         };
@@ -261,6 +263,9 @@ export class BlockProvider {
         }
       }
 
+      const sessionDurationMinutes = this.sessionDurationHours * 60;
+      const timeElapsed = timeRemaining !== null ? sessionDurationMinutes - timeRemaining : null;
+
       let burnRate: number | null = null;
       let tokenBurnRate: number | null = null;
 
@@ -296,6 +301,7 @@ export class BlockProvider {
         tokens: totalTokens,
         weightedTokens,
         timeRemaining,
+        timeElapsed,
         burnRate,
         tokenBurnRate,
       };
@@ -306,6 +312,7 @@ export class BlockProvider {
         tokens: null,
         weightedTokens: null,
         timeRemaining: null,
+        timeElapsed: null,
         burnRate: null,
         tokenBurnRate: null,
       };

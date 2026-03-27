@@ -58,11 +58,9 @@ export const DEFAULT_CONFIG: PowerlineConfig = {
     },
     today: {
       warningThreshold: 80,
-      amount: 50,
     },
     block: {
       warningThreshold: 80,
-      amount: 15,
     },
   },
   modelContextLimits: {

@@ -29,12 +29,14 @@ import {
   MetricsSegmentConfig,
   BlockSegmentConfig,
   TodaySegmentConfig,
+  WeeklySegmentConfig,
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
 } from "./segments";
 import { BlockProvider, BlockInfo } from "./segments/block";
 import { TodayProvider, TodayInfo } from "./segments/today";
+import { WeeklyProvider, WeeklyInfo } from "./segments/weekly";
 import {
   SYMBOLS,
   TEXT_SYMBOLS,
@@ -58,6 +60,7 @@ export class PowerlineRenderer {
   private _usageProvider?: UsageProvider;
   private _blockProvider?: BlockProvider;
   private _todayProvider?: TodayProvider;
+  private _weeklyProvider?: WeeklyProvider;
   private _contextProvider?: ContextProvider;
   private _gitService?: GitService;
   private _tmuxService?: TmuxService;
@@ -87,6 +90,13 @@ export class PowerlineRenderer {
       this._todayProvider = new TodayProvider();
     }
     return this._todayProvider;
+  }
+
+  private get weeklyProvider(): WeeklyProvider {
+    if (!this._weeklyProvider) {
+      this._weeklyProvider = new WeeklyProvider();
+    }
+    return this._weeklyProvider;
   }
 
   private get contextProvider(): ContextProvider {
@@ -147,6 +157,10 @@ export class PowerlineRenderer {
       ? await this.todayProvider.getTodayInfo()
       : null;
 
+    const weeklyInfo = this.needsSegmentInfo("weekly")
+      ? await this.weeklyProvider.getWeeklyInfo()
+      : null;
+
     const contextSegmentConfig = this.config.display.lines
       .map((line) => line.segments.context)
       .find((c) => c?.enabled) as ContextSegmentConfig | undefined;
@@ -165,6 +179,7 @@ export class PowerlineRenderer {
         usageInfo,
         blockInfo,
         todayInfo,
+        weeklyInfo,
         contextInfo,
         metricsInfo,
       );
@@ -192,6 +207,7 @@ export class PowerlineRenderer {
     usageInfo: UsageInfo | null,
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
+    weeklyInfo: WeeklyInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
   ): Promise<string> {
@@ -220,6 +236,7 @@ export class PowerlineRenderer {
           usageInfo,
           blockInfo,
           todayInfo,
+          weeklyInfo,
           contextInfo,
           metricsInfo,
           colors,
@@ -408,6 +425,7 @@ export class PowerlineRenderer {
     usageInfo: UsageInfo | null,
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
+    weeklyInfo: WeeklyInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
   ): Promise<string> {
@@ -429,6 +447,7 @@ export class PowerlineRenderer {
         usageInfo,
         blockInfo,
         todayInfo,
+        weeklyInfo,
         contextInfo,
         metricsInfo,
         colors,
@@ -454,6 +473,7 @@ export class PowerlineRenderer {
     usageInfo: UsageInfo | null,
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
+    weeklyInfo: WeeklyInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
     colors: PowerlineColors,
@@ -530,6 +550,14 @@ export class PowerlineRenderer {
       return this.renderTodaySegment(
         segment.config as TodaySegmentConfig,
         todayInfo,
+        colors,
+      );
+    }
+
+    if (segment.type === "weekly") {
+      return this.renderWeeklySegment(
+        segment.config as WeeklySegmentConfig,
+        weeklyInfo,
         colors,
       );
     }
@@ -637,6 +665,15 @@ export class PowerlineRenderer {
     return this.segmentRenderer.renderToday(todayInfo, colors, todayType);
   }
 
+  private renderWeeklySegment(
+    config: WeeklySegmentConfig,
+    weeklyInfo: WeeklyInfo | null,
+    colors: PowerlineColors,
+  ) {
+    if (!weeklyInfo) return null;
+    return this.segmentRenderer.renderWeekly(weeklyInfo, colors, config);
+  }
+
   private renderVersionSegment(
     config: VersionSegmentConfig,
     hookData: ClaudeHookData,
@@ -675,6 +712,7 @@ export class PowerlineRenderer {
       session_cost: symbolSet.session_cost,
       block_cost: symbolSet.block_cost,
       today_cost: symbolSet.today_cost,
+      weekly_cost: symbolSet.weekly_cost,
       context_time: symbolSet.context_time,
       metrics_response: symbolSet.metrics_response,
       metrics_last_response: symbolSet.metrics_last_response,
@@ -758,6 +796,7 @@ export class PowerlineRenderer {
     const session = getSegmentColors("session");
     const block = getSegmentColors("block");
     const today = getSegmentColors("today");
+    const weekly = getSegmentColors("weekly");
     const tmux = getSegmentColors("tmux");
     const context = getSegmentColors("context");
     const contextWarning = getSegmentColors("contextWarning");
@@ -780,6 +819,8 @@ export class PowerlineRenderer {
       blockFg: block.fg,
       todayBg: today.bg,
       todayFg: today.fg,
+      weeklyBg: weekly.bg,
+      weeklyFg: weekly.fg,
       tmuxBg: tmux.bg,
       tmuxFg: tmux.fg,
       contextBg: context.bg,
@@ -815,6 +856,8 @@ export class PowerlineRenderer {
         return colors.blockBg;
       case "today":
         return colors.todayBg;
+      case "weekly":
+        return colors.weeklyBg;
       case "tmux":
         return colors.tmuxBg;
       case "context":

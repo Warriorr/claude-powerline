@@ -63,10 +63,22 @@ export interface MetricsSegmentConfig extends SegmentConfig {
 export interface BlockSegmentConfig extends SegmentConfig {
   type: "cost" | "tokens" | "both" | "time" | "weighted";
   burnType?: "cost" | "tokens" | "both" | "none";
+  showElapsed?: boolean;
+  showPercentage?: boolean;
+  percentageMode?: "left" | "used";
+  showIcon?: boolean;
+  customIcon?: string;
 }
 
 export interface TodaySegmentConfig extends SegmentConfig {
   type: "cost" | "tokens" | "both" | "breakdown";
+}
+
+export interface WeeklySegmentConfig extends SegmentConfig {
+  type: "cost" | "tokens" | "both" | "breakdown";
+  showTimeLeft?: boolean;
+  showIcon?: boolean;
+  customIcon?: string;
 }
 
 export interface VersionSegmentConfig extends SegmentConfig {}
@@ -90,6 +102,7 @@ export type AnySegmentConfig =
   | MetricsSegmentConfig
   | BlockSegmentConfig
   | TodaySegmentConfig
+  | WeeklySegmentConfig
   | VersionSegmentConfig
   | SessionIdSegmentConfig
   | EnvSegmentConfig;
@@ -110,6 +123,7 @@ import type {
   MetricsInfo,
 } from ".";
 import type { TodayInfo } from "./today";
+import type { WeeklyInfo } from "./weekly";
 
 export interface PowerlineSymbols {
   right: string;
@@ -130,6 +144,7 @@ export interface PowerlineSymbols {
   session_cost: string;
   block_cost: string;
   today_cost: string;
+  weekly_cost: string;
   context_time: string;
   metrics_response: string;
   metrics_last_response: string;
@@ -704,17 +719,38 @@ export class SegmentRenderer {
         }
       }
 
+      const blockDurationMinutes = 5 * 60;
+      const pctMode = config?.percentageMode ?? "left";
+      const percentageContent =
+        config?.showPercentage && blockInfo.timeRemaining !== null
+          ? (() => {
+              const leftPct = Math.min(100, Math.round((blockInfo.timeRemaining / blockDurationMinutes) * 100));
+              const pct = pctMode === "used" ? 100 - leftPct : leftPct;
+              return ` ${pct}% ${pctMode}`;
+            })()
+          : "";
+
       if (type === "time") {
         displayText = mainContent;
+      } else if (config?.showElapsed && blockInfo.timeElapsed !== null && timeStr !== null) {
+        const elapsedHours = Math.floor(blockInfo.timeElapsed / 60);
+        const elapsedMins = blockInfo.timeElapsed % 60;
+        const elapsedStr = elapsedHours > 0 ? `${elapsedHours}h ${elapsedMins}m` : `${elapsedMins}m`;
+        displayText = `${mainContent}${burnContent} (${elapsedStr} used, ${timeStr} left)${percentageContent}`;
       } else {
         displayText = timeStr
-          ? `${mainContent}${burnContent} (${timeStr} left)`
-          : `${mainContent}${burnContent}`;
+          ? `${mainContent}${burnContent} (${timeStr} left)${percentageContent}`
+          : `${mainContent}${burnContent}${percentageContent}`;
       }
     }
 
+    const blockIconStr =
+      config?.showIcon !== false
+        ? `${config?.customIcon ?? this.symbols.block_cost} `
+        : "";
+
     return {
-      text: `${this.symbols.block_cost} ${displayText}`,
+      text: `${blockIconStr}${displayText}`,
       bgColor: colors.blockBg,
       fgColor: colors.blockFg,
     };
@@ -834,6 +870,50 @@ export class SegmentRenderer {
       text: `${this.symbols.version} v${hookData.version}`,
       bgColor: colors.versionBg,
       fgColor: colors.versionFg,
+    };
+  }
+
+  renderWeekly(
+    weeklyInfo: WeeklyInfo,
+    colors: PowerlineColors,
+    config?: WeeklySegmentConfig,
+  ): SegmentData {
+    const type = config?.type || "cost";
+    const baseText = this.formatUsageDisplay(
+      weeklyInfo.cost,
+      weeklyInfo.tokens,
+      weeklyInfo.tokenBreakdown,
+      type,
+    );
+
+    const extras: string[] = [];
+
+    if (config?.showTimeLeft && weeklyInfo.timeLeft !== null) {
+      const days = Math.floor(weeklyInfo.timeLeft / (24 * 60));
+      const hours = Math.floor((weeklyInfo.timeLeft % (24 * 60)) / 60);
+      const mins = weeklyInfo.timeLeft % 60;
+      const timeStr =
+        days > 0
+          ? `${days}d ${hours}h`
+          : hours > 0
+            ? `${hours}h ${mins}m`
+            : `${mins}m`;
+      extras.push(`${timeStr} left`);
+    }
+
+    const weeklyIconStr =
+      config?.showIcon !== false
+        ? `${config?.customIcon ?? this.symbols.weekly_cost} `
+        : "";
+    const text =
+      extras.length > 0
+        ? `${weeklyIconStr}${baseText} (${extras.join(", ")})`
+        : `${weeklyIconStr}${baseText}`;
+
+    return {
+      text,
+      bgColor: colors.weeklyBg,
+      fgColor: colors.weeklyFg,
     };
   }
 
