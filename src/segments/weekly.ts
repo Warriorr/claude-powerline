@@ -24,6 +24,9 @@ export interface WeeklyInfo {
   timeLeft: number | null;
   rateLimitPercentage: number | null;
   resetsAt: Date | null;
+  projectedUsagePercentage: number | null;
+  minutesToLimit: number | null;
+  elapsedMinutes: number | null;
 }
 
 function getTotalTokens(usage: WeeklyUsageEntry["usage"]): number {
@@ -161,6 +164,9 @@ export class WeeklyProvider {
           timeLeft: emptyTimeLeft,
           rateLimitPercentage: rateLimits?.used_percentage ?? null,
           resetsAt: emptyResetsAt,
+          projectedUsagePercentage: null,
+          minutesToLimit: null,
+          elapsedMinutes: null,
         };
       }
 
@@ -193,6 +199,21 @@ export class WeeklyProvider {
       const resolvedTimeLeft = resetsAt
         ? Math.max(0, Math.round((resetsAt.getTime() - new Date().getTime()) / (1000 * 60)))
         : timeLeft;
+
+      const now = new Date();
+      const weekStartTime = getWeekStart();
+      const elapsedMinutes = Math.round((now.getTime() - weekStartTime.getTime()) / (1000 * 60));
+
+      let projectedUsagePercentage: number | null = null;
+      let minutesToLimit: number | null = null;
+      if (rateLimits?.used_percentage != null && resolvedTimeLeft !== null && elapsedMinutes > 0) {
+        const ratePerMinute = rateLimits.used_percentage / elapsedMinutes;
+        projectedUsagePercentage = rateLimits.used_percentage + ratePerMinute * resolvedTimeLeft;
+        if (projectedUsagePercentage > 100) {
+          minutesToLimit = Math.round((100 - rateLimits.used_percentage) / ratePerMinute);
+        }
+      }
+
       return {
         cost: totalCost,
         tokens: totalTokens,
@@ -201,6 +222,9 @@ export class WeeklyProvider {
         timeLeft: resolvedTimeLeft,
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt,
+        projectedUsagePercentage,
+        minutesToLimit,
+        elapsedMinutes,
       };
     } catch (error) {
       debug("Error getting weekly info:", error);
@@ -212,6 +236,9 @@ export class WeeklyProvider {
         timeLeft: null,
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+        projectedUsagePercentage: null,
+        minutesToLimit: null,
+        elapsedMinutes: null,
       };
     }
   }

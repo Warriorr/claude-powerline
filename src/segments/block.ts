@@ -24,6 +24,8 @@ export interface BlockInfo {
   tokenBurnRate: number | null;
   rateLimitPercentage: number | null;
   resetsAt: Date | null;
+  projectedUsagePercentage: number | null;
+  minutesToLimit: number | null;
 }
 
 function getModelRateLimitWeight(model: string): number {
@@ -222,6 +224,8 @@ export class BlockProvider {
           tokenBurnRate: null,
           rateLimitPercentage: rateLimits?.used_percentage ?? null,
           resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+          projectedUsagePercentage: null,
+          minutesToLimit: null,
         };
       }
 
@@ -303,6 +307,16 @@ export class BlockProvider {
         `Block segment: $${totalCost.toFixed(2)}, ${totalTokens} tokens, ${timeRemaining}m remaining, burn rate: ${burnRate ? "$" + burnRate.toFixed(2) + "/hr" : "N/A"}`,
       );
 
+      let projectedUsagePercentage: number | null = null;
+      let minutesToLimit: number | null = null;
+      if (rateLimits?.used_percentage != null && timeElapsed !== null && timeElapsed > 0 && timeRemaining !== null) {
+        const ratePerMinute = rateLimits.used_percentage / timeElapsed;
+        projectedUsagePercentage = rateLimits.used_percentage + ratePerMinute * timeRemaining;
+        if (projectedUsagePercentage > 100) {
+          minutesToLimit = Math.round((100 - rateLimits.used_percentage) / ratePerMinute);
+        }
+      }
+
       return {
         cost: totalCost,
         tokens: totalTokens,
@@ -313,6 +327,8 @@ export class BlockProvider {
         tokenBurnRate,
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+        projectedUsagePercentage,
+        minutesToLimit,
       };
     } catch (error) {
       debug("Error getting active block info:", error);
@@ -326,6 +342,8 @@ export class BlockProvider {
         tokenBurnRate: null,
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+        projectedUsagePercentage: null,
+        minutesToLimit: null,
       };
     }
   }

@@ -457,7 +457,7 @@ const SEGMENT_DEFS = {
         <div class="field"><label>Burn Rate</label>
           <select onchange="segProp(this,'burnType');update()">
             <option value="">none</option>
-            ${opt(['cost','tokens','both','none'], s.burnType)}
+            ${opt(['cost','tokens','both'], s.burnType)}
           </select></div>
         <div class="toggle-row" style="margin-top:8px">
           <label>Show elapsed time</label>
@@ -474,6 +474,21 @@ const SEGMENT_DEFS = {
             <option value="used" ${s.percentageMode==='used'?'selected':''}>spent</option>
           </select>
           <p class="hint">left: "38% left" · spent: "62% spent" — uses API-reported quota when available (requires Claude.ai Pro/Max + Claude Code ≥ 2.1.80), otherwise falls back to time-based estimate</p>
+        </div>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show projected usage % <span class="new-badge">NEW</span> <span style="color:var(--text2);font-size:0.72rem">(experimental)</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showProjectedPercentage?'checked':''} onchange="segPropBool(this,'showProjectedPercentage');update()"><span class="slider"></span></label>
+        </div>
+        <p class="hint" style="margin-top:2px">Extrapolates block pace vs weekly quota — e.g. ↑94% safe, ↑134% will exceed. Linear projection; accuracy improves as elapsed time grows.</p>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show time-to-limit when critical <span class="new-badge">NEW</span> <span style="color:var(--text2);font-size:0.72rem">(experimental)</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showTimeToLimit?'checked':''} onchange="segPropBool(this,'showTimeToLimit');update()"><span class="slider"></span></label>
+        </div>
+        <p class="hint" style="margin-top:2px">Only shows when projected usage &gt; 100% — e.g. ⚡~1h. Raise min elapsed to reduce false positives early in a session.</p>
+        <div class="field" style="margin-top:8px">
+          <label>Min elapsed before showing projection <span class="new-badge">NEW</span></label>
+          <input type="number" min="1" max="300" value="${s.minElapsedMinutes||15}" placeholder="15" onchange="segPropNum(this,'minElapsedMinutes');update()">
+          <p class="hint">Minutes of elapsed block time before projection is displayed (default: 15)</p>
         </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
         <div class="toggle-row">
@@ -522,6 +537,21 @@ const SEGMENT_DEFS = {
         <div class="toggle-row" style="margin-top:8px">
           <label>Show time until weekly reset</label>
           <label class="toggle"><input type="checkbox" ${s.showTimeLeft?'checked':''} onchange="segPropBool(this,'showTimeLeft');update()"><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show projected usage % <span class="new-badge">NEW</span> <span style="color:var(--text2);font-size:0.72rem">(experimental)</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showProjectedPercentage?'checked':''} onchange="segPropBool(this,'showProjectedPercentage');update()"><span class="slider"></span></label>
+        </div>
+        <p class="hint" style="margin-top:2px">Extrapolates current pace to end of period (e.g. ↑94% safe, ↑134% will exceed). Linear projection; early-week estimates may be noisy.</p>
+        <div class="toggle-row" style="margin-top:8px">
+          <label>Show time-to-limit when critical <span class="new-badge">NEW</span> <span style="color:var(--text2);font-size:0.72rem">(experimental)</span></label>
+          <label class="toggle"><input type="checkbox" ${s.showTimeToLimit?'checked':''} onchange="segPropBool(this,'showTimeToLimit');update()"><span class="slider"></span></label>
+        </div>
+        <p class="hint" style="margin-top:2px">Only shows when projected usage &gt; 100% — e.g. ⚡~3h. Raise min elapsed to reduce false positives early in the week.</p>
+        <div class="field" style="margin-top:8px">
+          <label>Min elapsed before showing projection <span class="new-badge">NEW</span></label>
+          <input type="number" min="1" max="10080" value="${s.minElapsedMinutes||60}" placeholder="60" onchange="segPropNum(this,'minElapsedMinutes');update()">
+          <p class="hint">Minutes elapsed since week start before projection is displayed (default: 60)</p>
         </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
         <div class="toggle-row">
@@ -628,6 +658,12 @@ function segProp(el, key, asNumber=false) {
   const seg = getSegFromEl(el);
   if (!seg) return;
   seg[key] = asNumber ? Number(el.value) : el.value;
+}
+function segPropNum(el, key) {
+  const seg = selectedSeg();
+  if (!seg) return;
+  const v = parseInt(el.value, 10);
+  if (!isNaN(v)) seg[key] = v; else delete seg[key];
 }
 function segPropBool(el, key) {
   const seg = getSegFromEl(el);
@@ -1100,6 +1136,8 @@ function getSegLabel(seg) {
         extras.push(pctMode === 'used' ? '62% spent' : '38% left');
       }
       if (seg.showElapsed) extras.push('30m used');
+      if (seg.showProjectedPercentage) extras.push('↑94%');
+      if (seg.showTimeToLimit) extras.push('⚡~1h');
       extras.push('2h 30m left');
       main += ` (${extras.join(', ')})`;
       return blockIcon + main;

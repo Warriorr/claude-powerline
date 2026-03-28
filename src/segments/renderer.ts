@@ -66,6 +66,9 @@ export interface BlockSegmentConfig extends SegmentConfig {
   showElapsed?: boolean;
   showPercentage?: boolean;
   percentageMode?: "left" | "used";
+  showProjectedPercentage?: boolean;
+  showTimeToLimit?: boolean;
+  minElapsedMinutes?: number;
   showIcon?: boolean;
   customIcon?: string;
 }
@@ -79,6 +82,9 @@ export interface WeeklySegmentConfig extends SegmentConfig {
   showTimeLeft?: boolean;
   showPercentage?: boolean;
   percentageMode?: "left" | "used";
+  showProjectedPercentage?: boolean;
+  showTimeToLimit?: boolean;
+  minElapsedMinutes?: number;
   showIcon?: boolean;
   customIcon?: string;
 }
@@ -747,6 +753,21 @@ export class SegmentRenderer {
           extras.push(`${elapsedStr} used`);
         }
 
+        const blockMinElapsed = config?.minElapsedMinutes ?? 15;
+        const blockElapsedOk = blockInfo.timeElapsed !== null && blockInfo.timeElapsed >= blockMinElapsed;
+
+        if (config?.showProjectedPercentage && blockElapsedOk && blockInfo.projectedUsagePercentage !== null) {
+          const pct = Math.round(blockInfo.projectedUsagePercentage);
+          extras.push(`↑${pct}%`);
+        }
+
+        if (config?.showTimeToLimit && blockElapsedOk && blockInfo.minutesToLimit !== null) {
+          const h = Math.floor(blockInfo.minutesToLimit / 60);
+          const m = blockInfo.minutesToLimit % 60;
+          const timeStr2 = h > 0 ? `${h}h ${m}m` : `${m}m`;
+          extras.push(`⚡~${timeStr2}`);
+        }
+
         if (timeStr) extras.push(`${timeStr} left`);
 
         displayText = extras.length > 0
@@ -916,6 +937,21 @@ export class SegmentRenderer {
             ? `${hours}h ${mins}m`
             : `${mins}m`;
       extras.push(`${timeStr} left`);
+    }
+
+    const weeklyMinElapsed = config?.minElapsedMinutes ?? 60;
+    const weeklyElapsedOk = weeklyInfo.elapsedMinutes !== null && weeklyInfo.elapsedMinutes >= weeklyMinElapsed;
+
+    if (config?.showProjectedPercentage && weeklyElapsedOk && weeklyInfo.projectedUsagePercentage !== null) {
+      const pct = Math.round(weeklyInfo.projectedUsagePercentage);
+      extras.push(`↑${pct}%`);
+    }
+
+    if (config?.showTimeToLimit && weeklyElapsedOk && weeklyInfo.minutesToLimit !== null) {
+      const h = Math.floor(weeklyInfo.minutesToLimit / 60);
+      const m = weeklyInfo.minutesToLimit % 60;
+      const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      extras.push(`⚡~${timeStr}`);
     }
 
     const weeklyIconStr =
