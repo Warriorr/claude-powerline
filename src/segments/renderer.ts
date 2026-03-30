@@ -49,6 +49,10 @@ export interface ContextSegmentConfig extends SegmentConfig {
     | "squares";
   autocompactBuffer?: number;
   percentageMode?: "remaining" | "used";
+  /** Context-left % at which warning color activates (default: 40). E.g. 60 = warn when only 60% remains */
+  warningThreshold?: number;
+  /** Context-left % at which critical color activates (default: 20) */
+  criticalThreshold?: number;
 }
 
 export interface MetricsSegmentConfig extends SegmentConfig {
@@ -452,10 +456,13 @@ export class SegmentRenderer {
     let bgColor = colors.contextBg;
     let fgColor = colors.contextFg;
 
-    if (contextInfo.contextLeftPercentage <= 20) {
+    const warningThreshold = config?.warningThreshold ?? 40;
+    const criticalThreshold = config?.criticalThreshold ?? 20;
+
+    if (contextInfo.contextLeftPercentage <= criticalThreshold) {
       bgColor = colors.contextCriticalBg;
       fgColor = colors.contextCriticalFg;
-    } else if (contextInfo.contextLeftPercentage <= 40) {
+    } else if (contextInfo.contextLeftPercentage <= warningThreshold) {
       bgColor = colors.contextWarningBg;
       fgColor = colors.contextWarningFg;
     }

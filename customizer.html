@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Claude Powerline Customizer</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%23e94560'/><stop offset='100%' stop-color='%23a78bfa'/></linearGradient></defs><path d='M20 2 L8 18 H16 L12 30 L26 14 H18 Z' fill='url(%23g)'/></svg>">
 <!-- Try to load Symbols Nerd Font for icon preview -->
 <style>
   @font-face {
@@ -591,6 +592,14 @@ const SEGMENT_DEFS = {
         </div>
         <div class="field" style="margin-top:10px"><label>Autocompact buffer (tokens)</label>
           <input type="number" value="${s.autocompactBuffer||33000}" onchange="segProp(this,'autocompactBuffer',true);update()">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Warning threshold (% context left)</label>
+          <input type="number" min="0" max="100" value="${s.warningThreshold??40}" onchange="segProp(this,'warningThreshold',true);update()">
+          <p class="hint" style="margin-top:4px">Color switches to warning when context remaining % drops to this value or below. Default: 40</p>
+        </div>
+        <div class="field" style="margin-top:10px"><label>Critical threshold (% context left)</label>
+          <input type="number" min="0" max="100" value="${s.criticalThreshold??20}" onchange="segProp(this,'criticalThreshold',true);update()">
+          <p class="hint" style="margin-top:4px">Color switches to critical when context remaining % drops to this value or below. Default: 20</p>
         </div>`;
     }
   },
