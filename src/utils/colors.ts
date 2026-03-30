@@ -97,6 +97,11 @@ export function getColorSupport(): "none" | "ansi" | "ansi256" | "truecolor" {
     return "truecolor";
   }
 
+  // Windows Terminal sets WT_SESSION unconditionally and has supported truecolor since v1.0
+  if (env.WT_SESSION) {
+    return "truecolor";
+  }
+
   const truecolorTerminals = [
     "xterm-kitty",
     "xterm-ghostty",
