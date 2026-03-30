@@ -33,7 +33,7 @@
     --mono: 'Symbols Nerd Font Mono', 'JetBrains Mono NF', 'JetBrains Mono Nerd Font', 'Hack Nerd Font', 'FiraCode Nerd Font', 'CaskaydiaCove Nerd Font', 'MesloLGS NF', 'Cascadia Code NF', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding-bottom: 88px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding-bottom: 160px; }
 
   /* Layout */
   .app { display: grid; grid-template-columns: 1fr 420px; gap: 0; min-height: 100vh; }
@@ -195,7 +195,10 @@
           <label>Paste your JSON config below</label>
           <textarea class="import-area" id="import-json" placeholder='{"theme":"dark","display":{...}}'></textarea>
         </div>
-        <button class="btn btn-secondary" onclick="importConfig()">Import & Apply</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-secondary" onclick="importConfig()">Import & Apply</button>
+          <button class="btn btn-secondary" onclick="resetToDefaults()" style="color:var(--red);border-color:var(--red)" title="Reset all settings to defaults">Reset</button>
+        </div>
         <p class="hint">Paste any existing <code>.claude-powerline.json</code> to edit it visually.</p>
       </div>
     </div>
@@ -218,6 +221,9 @@
             <option value="gruvbox">gruvbox</option>
             <option value="custom">custom</option>
           </select>
+        </div>
+        <div id="theme-baseline-wrap">
+          <button class="btn btn-secondary btn-sm" onclick="copyThemeToCustom()" title="Copy this theme's colors to custom for editing">✏️ Use as Custom Baseline &rarr; copy colors for editing</button>
         </div>
         <div id="custom-colors-section" style="display:none">
           <hr class="divider">
@@ -303,7 +309,7 @@
         <span class="chevron">▾</span>
       </div>
       <div class="section-body">
-        <p class="hint" style="margin-bottom:10px">Override context window sizes per model (optional).</p>
+        <p class="hint" style="margin-bottom:10px">Override context window sizes per model (optional). Defaults are 200k for all models. <strong style="color:var(--text)">Claude Max users:</strong> set <code>opus</code> to <code>1000000</code> to get accurate context % for the 1M window — Pro opus stays at 200k.</p>
         <div id="model-limits"></div>
         <div style="display:flex;gap:8px;margin-top:8px">
           <input type="text" id="new-model-name" placeholder="model name (e.g. sonnet)" style="flex:1">
@@ -690,6 +696,7 @@ function renderLines() {
     return `
       <div class="line-card">
         <div class="line-header" onclick="toggleLineBody(${li})">
+          <span class="line-drag-handle" title="Drag to reorder lines" draggable="false">⠿</span>
           <span class="line-num">Line ${li+1}</span>
           <span class="line-title">${line.segments.filter(s=>s.enabled).map(s=>s._type).join(' · ') || 'empty'}</span>
           <div style="display:flex;gap:3px;margin-left:auto" onclick="event.stopPropagation()">
@@ -724,7 +731,9 @@ function renderSegCard(seg, li, si) {
       ondrop="onSegDrop(event,${li},${si})">
       <div class="seg-header">
         <span class="drag-handle" title="Drag to reorder">⠿</span>
-        <span class="seg-name">${def.label}</span>
+        <select class="seg-type-select" onchange="changeSegType(${li},${si},this.value)" onclick="event.stopPropagation()" title="Change segment type">
+          ${Object.keys(SEGMENT_DEFS).map(k=>`<option value="${k}" ${k===seg._type?'selected':''}>${k}</option>`).join('')}
+        </select>
         <div style="display:flex;gap:2px;margin-left:auto;align-items:center">
           <button class="reorder-btn" title="Move left" onclick="moveSeg(${li},${si},-1)" ${si===0?'disabled':''}>◀</button>
           <button class="reorder-btn" title="Move right" onclick="moveSeg(${li},${si},1)" ${si===total-1?'disabled':''}>▶</button>
@@ -834,6 +843,15 @@ function removeSegment(li, si) {
   render();
 }
 
+function changeSegType(li, si, newType) {
+  const def = SEGMENT_DEFS[newType];
+  if (!def) return;
+  // Replace segment with new type + defaults, preserving enabled state
+  const wasEnabled = state.lines[li].segments[si]?.enabled ?? true;
+  state.lines[li].segments[si] = { _type: newType, ...JSON.parse(JSON.stringify(def.defaults)), enabled: wasEnabled };
+  render();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BUDGET UI
 // ─────────────────────────────────────────────────────────────────────────────
@@ -934,7 +952,26 @@ function onThemeChange() {
   state.theme = document.getElementById('theme').value;
   const isCustom = state.theme === 'custom';
   document.getElementById('custom-colors-section').style.display = isCustom ? '' : 'none';
+  document.getElementById('theme-baseline-wrap').style.display = isCustom ? 'none' : '';
   if (isCustom) renderColorGrid();
+}
+
+function copyThemeToCustom() {
+  const currentTheme = document.getElementById('theme').value;
+  if (currentTheme === 'custom') return;
+  const palette = THEME_PALETTES[currentTheme];
+  if (!palette) return;
+  // Deep-copy all palette colors into customColors
+  for (const key of COLOR_SEGMENTS) {
+    if (palette[key]) {
+      state.customColors[key] = { bg: palette[key].bg, fg: palette[key].fg };
+    }
+  }
+  // Switch to custom theme
+  state.theme = 'custom';
+  document.getElementById('theme').value = 'custom';
+  onThemeChange();
+  update();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1289,6 +1326,7 @@ function update() {
   const cfg = buildConfig();
   document.getElementById('json-output').textContent = JSON.stringify(cfg, null, 2);
   renderPreview();
+  saveToLocalStorage();
 }
 
 function render() {
@@ -1301,49 +1339,46 @@ function render() {
 // ─────────────────────────────────────────────────────────────────────────────
 // IMPORT
 // ─────────────────────────────────────────────────────────────────────────────
+function applyConfig(cfg) {
+  if (cfg.theme) {
+    state.theme = cfg.theme;
+    document.getElementById('theme').value = cfg.theme;
+    onThemeChange();
+  }
+  if (cfg.display) {
+    const d = cfg.display;
+    if (d.style) document.getElementById('display-style').value = d.style;
+    if (d.charset) document.getElementById('display-charset').value = d.charset;
+    if (d.colorCompatibility) document.getElementById('display-color').value = d.colorCompatibility;
+    if (d.padding !== undefined) document.getElementById('display-padding').value = d.padding;
+    if (d.autoWrap !== undefined) document.getElementById('display-autowrap').checked = d.autoWrap;
+    if (Array.isArray(d.lines)) {
+      state.lines = d.lines.map(line => ({
+        segments: Object.entries(line.segments || {}).map(([type, conf]) => ({
+          _type: type, ...conf
+        }))
+      }));
+    }
+  }
+  if (cfg.colors?.custom) {
+    for (const [k, v] of Object.entries(cfg.colors.custom)) {
+      if (state.customColors[k]) state.customColors[k] = { ...v };
+    }
+  }
+  if (cfg.budget) {
+    for (const [k, v] of Object.entries(cfg.budget)) {
+      if (state.budget[k]) state.budget[k] = { amount: v.amount||'', warningThreshold: v.warningThreshold||80, type: v.type||'cost' };
+    }
+  }
+  if (cfg.modelContextLimits) state.modelLimits = { ...cfg.modelContextLimits };
+}
+
 function importConfig() {
   const raw = document.getElementById('import-json').value.trim();
   if (!raw) return;
   try {
     const cfg = JSON.parse(raw);
-
-    if (cfg.theme) {
-      state.theme = cfg.theme;
-      document.getElementById('theme').value = cfg.theme;
-      onThemeChange();
-    }
-
-    if (cfg.display) {
-      const d = cfg.display;
-      if (d.style) document.getElementById('display-style').value = d.style;
-      if (d.charset) document.getElementById('display-charset').value = d.charset;
-      if (d.colorCompatibility) document.getElementById('display-color').value = d.colorCompatibility;
-      if (d.padding !== undefined) document.getElementById('display-padding').value = d.padding;
-      if (d.autoWrap !== undefined) document.getElementById('display-autowrap').checked = d.autoWrap;
-
-      if (Array.isArray(d.lines)) {
-        state.lines = d.lines.map(line => ({
-          segments: Object.entries(line.segments || {}).map(([type, conf]) => ({
-            _type: type, ...conf
-          }))
-        }));
-      }
-    }
-
-    if (cfg.colors?.custom) {
-      for (const [k, v] of Object.entries(cfg.colors.custom)) {
-        if (state.customColors[k]) state.customColors[k] = { ...v };
-      }
-    }
-
-    if (cfg.budget) {
-      for (const [k, v] of Object.entries(cfg.budget)) {
-        if (state.budget[k]) state.budget[k] = { amount: v.amount||'', warningThreshold: v.warningThreshold||80, type: v.type||'cost' };
-      }
-    }
-
-    if (cfg.modelContextLimits) state.modelLimits = { ...cfg.modelContextLimits };
-
+    applyConfig(cfg);
     render();
     document.getElementById('import-json').value = '';
     alert('Config imported successfully!');
@@ -1388,7 +1423,10 @@ function toggleGuide() {
 // ─────────────────────────────────────────────────────────────────────────────
 // INIT — default config
 // ─────────────────────────────────────────────────────────────────────────────
-state.lines = [
+// ─────────────────────────────────────────────────────────────────────────────
+// DEFAULT STATE (used for init and reset)
+// ─────────────────────────────────────────────────────────────────────────────
+const DEFAULT_LINES = [
   {
     segments: [
       { _type:'directory', enabled:true, style:'full' },
@@ -1401,6 +1439,52 @@ state.lines = [
   }
 ];
 
+const DEFAULT_CUSTOM_COLORS = JSON.parse(JSON.stringify(state.customColors));
+const DEFAULT_BUDGET = JSON.parse(JSON.stringify(state.budget));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCALSTORAGE PERSISTENCE
+// ─────────────────────────────────────────────────────────────────────────────
+const LS_KEY = 'claude-powerline-config';
+
+function saveToLocalStorage() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(buildConfig())); } catch(e) {}
+}
+
+function loadFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    applyConfig(JSON.parse(raw));
+    return true;
+  } catch(e) { return false; }
+}
+
+function resetToDefaults() {
+  if (!confirm('Reset all settings to defaults? This will also clear saved config.')) return;
+  localStorage.removeItem(LS_KEY);
+  state.theme = 'dark';
+  state.lines = JSON.parse(JSON.stringify(DEFAULT_LINES));
+  state.customColors = JSON.parse(JSON.stringify(DEFAULT_CUSTOM_COLORS));
+  state.budget = JSON.parse(JSON.stringify(DEFAULT_BUDGET));
+  state.modelLimits = {};
+  document.getElementById('theme').value = 'dark';
+  document.getElementById('display-style').value = 'minimal';
+  document.getElementById('display-charset').value = 'unicode';
+  document.getElementById('display-color').value = 'auto';
+  document.getElementById('display-padding').value = '1';
+  document.getElementById('display-autowrap').checked = false;
+  onThemeChange();
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+state.lines = JSON.parse(JSON.stringify(DEFAULT_LINES));
+if (!loadFromLocalStorage()) {
+  // no saved config — defaults already applied above
+}
 render();
 </script>
 </body>
