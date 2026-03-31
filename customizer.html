@@ -149,6 +149,10 @@
   .preview-line { display: inline-flex; align-items: stretch; }
   .preview-terminal::-webkit-scrollbar { height: 3px; }
   .preview-collapsed .preview-terminal { display: none; }
+  .preview-color-toggle { display:none; align-items:center; gap:0; background:rgba(255,255,255,0.07); border-radius:4px; border:1px solid var(--border); overflow:hidden; flex-shrink:0; }
+  .preview-color-toggle.visible { display:flex; }
+  .pct-btn { padding:2px 8px; font-size:0.62rem; font-weight:600; cursor:pointer; border:none; background:none; color:var(--text2); letter-spacing:0.4px; line-height:1.6; transition:all 0.15s; }
+  .pct-btn.active { background:var(--accent); color:#fff; }
 
   /* Theme preview dots */
   .theme-dots { display: flex; gap: 4px; }
@@ -174,6 +178,34 @@
     .app { grid-template-columns: 1fr; }
     .output-panel { position: static; height: auto; }
   }
+
+  /* ── 256-color picker ─────────────────────────────── */
+  .dual-picker-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
+  .dual-picker-label { font-size:0.7rem; color:var(--text2); font-weight:600; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:5px; }
+  .ansi256-btn {
+    width:100%; height:34px; border:1px solid var(--border); border-radius:5px;
+    cursor:pointer; font-size:0.7rem; font-family:var(--mono);
+    padding:0 6px; display:flex; align-items:center; gap:6px; transition:border-color 0.15s;
+  }
+  .ansi256-btn:hover { border-color:var(--accent); }
+  .ansi256-btn .sw { width:14px; height:14px; border-radius:2px; flex-shrink:0; border:1px solid rgba(255,255,255,0.2); }
+  #ansi256-popup {
+    display:none; position:fixed; z-index:9999;
+    background:#16162a; border:1px solid #3a3a5a; border-radius:8px;
+    padding:10px; box-shadow:0 8px 32px rgba(0,0,0,0.75); user-select:none;
+    max-height:calc(100vh - 24px); overflow-y:auto;
+  }
+  .p256-label { font-size:0.62rem; color:var(--text2); font-weight:600; letter-spacing:0.5px; text-transform:uppercase; margin:0 0 3px; }
+  .p256-section { margin-bottom:6px; }
+  .p256sw {
+    width:14px; height:14px; display:inline-block; cursor:pointer;
+    border:1px solid transparent; border-radius:2px; vertical-align:top; flex-shrink:0;
+    transition:transform 0.08s;
+  }
+  .p256sw:hover { transform:scale(1.4); border-color:rgba(255,255,255,0.9) !important; z-index:1; position:relative; }
+  .p256sw.sel { border-color:#fff !important; transform:scale(1.2); position:relative; z-index:2; }
+  .p256-row { display:flex; flex-wrap:nowrap; gap:1px; margin-bottom:1px; }
+  .p256-cube-grid { display:grid; grid-template-columns:repeat(3,auto); gap:3px 8px; }
 </style>
 </head>
 <body>
@@ -228,7 +260,7 @@
         </div>
         <div id="custom-colors-section" style="display:none">
           <hr class="divider">
-          <p class="hint" style="margin-bottom:10px">Define colors for each segment (hex values)</p>
+          <p class="hint" style="margin-bottom:10px">Define truecolor hex <em>&amp;</em> 256-color palette values per segment. <strong>Auto</strong> mode uses truecolor on capable terminals and 256-color on others.</p>
           <div id="color-grid"></div>
         </div>
       </div>
@@ -363,7 +395,13 @@
         <span id="preview-style-label" style="color:var(--cyan);font-weight:600"></span>
         <span id="preview-theme-label" style="color:var(--purple)"></span>
       </span>
-      <span class="preview-float-hint">click to collapse ▲</span>
+      <span style="display:flex;align-items:center;gap:10px">
+        <span class="preview-color-toggle" id="preview-color-toggle" onclick="event.stopPropagation()">
+          <button class="pct-btn active" id="pct-tc" onclick="setPreviewColorMode('truecolor')">TC</button>
+          <button class="pct-btn" id="pct-256" onclick="setPreviewColorMode('256')">256</button>
+        </span>
+        <span class="preview-float-hint">click to collapse ▲</span>
+      </span>
     </div>
     <div class="preview-terminal" id="preview-segs"></div>
   </div>
@@ -375,24 +413,25 @@
 const state = {
   theme: 'dark',
   display: { style: 'minimal', charset: 'unicode', colorCompatibility: 'auto', padding: 1, autoWrap: false },
+  previewColorMode: 'truecolor',
   lines: [
     { segments: [] },
   ],
   customColors: {
-    directory: { bg: '#3b4261', fg: '#a9b1d6' },
-    git:       { bg: '#1a1b26', fg: '#7aa2f7' },
-    model:     { bg: '#24283b', fg: '#e0af68' },
-    session:   { bg: '#1a1b26', fg: '#9ece6a' },
-    block:     { bg: '#1e2030', fg: '#bb9af7' },
-    today:     { bg: '#1a1b26', fg: '#f7768e' },
-    weekly:    { bg: '#1a1b26', fg: '#2ac3de' },
-    tmux:      { bg: '#414868', fg: '#c0caf5' },
-    context:   { bg: '#1a1b26', fg: '#7dcfff' },
-    contextWarning:  { bg: '#92400e', fg: '#fbbf24' },
-    contextCritical: { bg: '#991b1b', fg: '#fca5a5' },
-    metrics:   { bg: '#1a1b26', fg: '#a9b1d6' },
-    version:   { bg: '#1a1b26', fg: '#565f89' },
-    env:       { bg: '#1a1b26', fg: '#7aa2f7' },
+    directory: { bg: '#3b4261', fg: '#a9b1d6', bg256: '#5f5f87', fg256: '#d787d7' },
+    git:       { bg: '#1a1b26', fg: '#7aa2f7', bg256: '#3a3a3a', fg256: '#87afff' },
+    model:     { bg: '#24283b', fg: '#e0af68', bg256: '#262626', fg256: '#ffd787' },
+    session:   { bg: '#1a1b26', fg: '#9ece6a', bg256: '#5f5f87', fg256: '#87d75f' },
+    block:     { bg: '#1e2030', fg: '#bb9af7', bg256: '#875f87', fg256: '#af87ff' },
+    today:     { bg: '#1a1b26', fg: '#f7768e', bg256: '#444444', fg256: '#ff5f87' },
+    weekly:    { bg: '#1a1b26', fg: '#2ac3de', bg256: '#3a3a3a', fg256: '#00d7d7' },
+    tmux:      { bg: '#414868', fg: '#c0caf5', bg256: '#5f5f87', fg256: '#d7d7ff' },
+    context:   { bg: '#1a1b26', fg: '#7dcfff', bg256: '#875faf', fg256: '#d7d7ff' },
+    contextWarning:  { bg: '#92400e', fg: '#fbbf24', bg256: '#d7af5f', fg256: '#1c1c1c' },
+    contextCritical: { bg: '#991b1b', fg: '#fca5a5', bg256: '#d75f87', fg256: '#1c1c1c' },
+    metrics:   { bg: '#1a1b26', fg: '#a9b1d6', bg256: '#8787af', fg256: '#d7d7ff' },
+    version:   { bg: '#1a1b26', fg: '#565f89', bg256: '#875f87', fg256: '#d787d7' },
+    env:       { bg: '#1a1b26', fg: '#7aa2f7', bg256: '#3a3a3a', fg256: '#ff5f87' },
   },
   budget: {
     session: { amount: '', warningThreshold: 80, type: 'cost' },
@@ -897,6 +936,97 @@ function renderBudget() {
 // ─────────────────────────────────────────────────────────────────────────────
 // CUSTOM COLORS UI
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 256-COLOR PICKER
+// ─────────────────────────────────────────────────────────────────────────────
+let _pickerTarget = null; // { segKey, field }
+
+const ANSI256_PALETTE = (() => {
+  const p = [];
+  ['#000000','#800000','#008000','#808000','#000080','#800080','#008080','#c0c0c0',
+   '#808080','#ff0000','#00ff00','#ffff00','#0000ff','#ff00ff','#00ffff','#ffffff'].forEach(c => p.push(c));
+  for (let r=0;r<6;r++) for (let g=0;g<6;g++) for (let b=0;b<6;b++) {
+    const v = i => i===0 ? 0 : 55+40*i;
+    p.push('#'+[v(r),v(g),v(b)].map(x=>x.toString(16).padStart(2,'0')).join(''));
+  }
+  for (let i=0;i<24;i++) { const v=(8+10*i).toString(16).padStart(2,'0'); p.push('#'+v+v+v); }
+  return p;
+})();
+
+function hexToNearest256Hex(hex) {
+  // Identical algorithm to colors.ts hexTo256Ansi — ensures round-trip fidelity.
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  let idx;
+  if (r===g && g===b) {
+    if (r<8) idx=16; else if (r>248) idx=231;
+    else idx=Math.round(((r-8)/247)*24)+232;
+  } else {
+    const ci = v => v<48?0:v<115?1:v<155?2:v<195?3:v<235?4:5;
+    idx = 16 + 36*ci(r) + 6*ci(g) + ci(b);
+  }
+  return ANSI256_PALETTE[idx];
+}
+
+function openAnsi256Picker(segKey, field, btn) {
+  _pickerTarget = { segKey, field };
+  const popup = document.getElementById('ansi256-popup');
+  const current = (state.customColors[segKey]?.[field] || '#000000').toLowerCase();
+
+  const sw = (hex, idx) => {
+    const sel = hex===current ? ' sel' : '';
+    return `<span class="p256sw${sel}" style="background:${hex}" title="#${idx} ${hex}" onclick="selectAnsi256Color('${hex}')"></span>`;
+  };
+
+  // System (0-15): 2 rows × 8
+  const sysRows = `<div class="p256-row">${ANSI256_PALETTE.slice(0,8).map((c,i)=>sw(c,i)).join('')}</div>` +
+                  `<div class="p256-row">${ANSI256_PALETTE.slice(8,16).map((c,i)=>sw(c,i+8)).join('')}</div>`;
+
+  // Cube (16-231): 6 R-groups arranged 3 per row
+  let cubeHtml = '<div class="p256-cube-grid">';
+  for (let r=0;r<6;r++) {
+    cubeHtml += '<div class="p256-cube-group">';
+    for (let g=0;g<6;g++) {
+      cubeHtml += '<div class="p256-row">';
+      for (let b=0;b<6;b++) { const idx=16+r*36+g*6+b; cubeHtml+=sw(ANSI256_PALETTE[idx],idx); }
+      cubeHtml += '</div>';
+    }
+    cubeHtml += '</div>';
+  }
+  cubeHtml += '</div>';
+
+  // Grayscale (232-255): 2 rows of 12
+  const grayRow = `<div class="p256-row">${ANSI256_PALETTE.slice(232,244).map((c,i)=>sw(c,232+i)).join('')}</div>` +
+                  `<div class="p256-row">${ANSI256_PALETTE.slice(244).map((c,i)=>sw(c,244+i)).join('')}</div>`;
+
+  popup.innerHTML = `
+    <div class="p256-section"><div class="p256-label">System (0–15)</div>${sysRows}</div>
+    <div class="p256-section"><div class="p256-label">Color cube (16–231)</div>${cubeHtml}</div>
+    <div class="p256-section"><div class="p256-label">Grayscale (232–255)</div>${grayRow}</div>`;
+
+  popup.style.display = 'block';
+  const rect = btn.getBoundingClientRect();
+  const pw = popup.offsetWidth, ph = popup.offsetHeight;
+  let top = rect.bottom+4, left = rect.left;
+  if (top+ph > window.innerHeight-8) top = rect.top-ph-4;
+  if (left+pw > window.innerWidth-8) left = window.innerWidth-pw-8;
+  popup.style.top = top+'px'; popup.style.left = left+'px';
+}
+
+function selectAnsi256Color(hex) {
+  if (!_pickerTarget) return;
+  const {segKey, field} = _pickerTarget;
+  state.customColors[segKey][field] = hex;
+  document.getElementById('ansi256-popup').style.display = 'none';
+  _pickerTarget = null;
+  renderColorGrid(); update();
+}
+
+document.addEventListener('click', e => {
+  const popup = document.getElementById('ansi256-popup');
+  if (popup && popup.style.display!=='none' && !popup.contains(e.target) && !e.target.closest('.ansi256-btn'))
+    popup.style.display = 'none';
+});
+
 function renderColorGrid() {
   const labels = {
     directory:'Directory', git:'Git', model:'Model', session:'Session',
@@ -904,24 +1034,57 @@ function renderColorGrid() {
     context:'Context', contextWarning:'Context Warning', contextCritical:'Context Critical',
     metrics:'Metrics', version:'Version', env:'Env'
   };
+
   document.getElementById('color-grid').innerHTML = COLOR_SEGMENTS.map(key => {
-    const c = state.customColors[key] || { bg:'#1a1b26', fg:'#a9b1d6' };
+    const c = state.customColors[key] || { bg:'#1a1b26', fg:'#a9b1d6', bg256:'#5f5f87', fg256:'#d7d7ff' };
+
+    const sw256btn = (field) => {
+      const val = c[field] || '#000000';
+      const r=parseInt(val.slice(1,3),16), g=parseInt(val.slice(3,5),16), b=parseInt(val.slice(5,7),16);
+      const textColor = (0.299*r+0.587*g+0.114*b) > 128 ? '#000' : '#fff';
+      return `<button class="ansi256-btn" style="background:${val};color:${textColor}"
+        onclick="openAnsi256Picker('${key}','${field}',this)">
+        <span class="sw" style="background:${val}"></span>${val}
+      </button>`;
+    };
+
     return `
-      <div style="margin-bottom:10px">
-        <label style="color:var(--text);font-weight:600;font-size:0.8rem;margin-bottom:5px;display:flex;align-items:center;gap:6px">
-          <span style="width:10px;height:10px;border-radius:50%;background:${c.bg};border:1px solid ${c.fg};display:inline-block"></span>
+      <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <label style="color:var(--text);font-weight:600;font-size:0.8rem;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${c.bg};border:2px solid ${c.fg};display:inline-block"></span>
           ${labels[key]||key}
         </label>
-        <div class="grid-2">
-          <div class="field"><label>Background</label>
-            <input type="color" value="${c.bg}" onchange="state.customColors['${key}'].bg=this.value;update()">
+        <div style="margin-bottom:6px">
+          <div class="dual-picker-label">Truecolor</div>
+          <div class="dual-picker-row">
+            <div class="field"><label>Background</label>
+              <input type="color" value="${c.bg}" onchange="state.customColors['${key}'].bg=this.value;renderColorGrid();update()">
+            </div>
+            <div class="field"><label>Foreground</label>
+              <input type="color" value="${c.fg}" onchange="state.customColors['${key}'].fg=this.value;renderColorGrid();update()">
+            </div>
           </div>
-          <div class="field"><label>Foreground</label>
-            <input type="color" value="${c.fg}" onchange="state.customColors['${key}'].fg=this.value;update()">
+        </div>
+        <div>
+          <div class="dual-picker-label" style="display:flex;align-items:center;justify-content:space-between">
+            <span>256-color</span>
+            <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.7rem;padding:0"
+              onclick="snapTo256('${key}')" title="Snap to nearest 256-color from truecolor values">↺ sync from truecolor</button>
+          </div>
+          <div class="dual-picker-row">
+            <div class="field"><label>Background</label>${sw256btn('bg256')}</div>
+            <div class="field"><label>Foreground</label>${sw256btn('fg256')}</div>
           </div>
         </div>
       </div>`;
   }).join('');
+}
+
+function snapTo256(key) {
+  const c = state.customColors[key];
+  c.bg256 = hexToNearest256Hex(c.bg);
+  c.fg256 = hexToNearest256Hex(c.fg);
+  renderColorGrid(); update();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -973,6 +1136,7 @@ function copyThemeToCustom() {
   // Deep-copy all palette colors into customColors
   for (const key of COLOR_SEGMENTS) {
     if (palette[key]) {
+      // Preserve existing 256-color overrides; only copy truecolor values from palette
       state.customColors[key] = { bg: palette[key].bg, fg: palette[key].fg };
     }
   }
@@ -1013,7 +1177,10 @@ function buildConfig() {
   if (state.theme === 'custom') {
     cfg.colors = { custom: {} };
     for (const key of COLOR_SEGMENTS) {
-      cfg.colors.custom[key] = { ...state.customColors[key] };
+      const c = state.customColors[key];
+      cfg.colors.custom[key] = { bg: c.bg, fg: c.fg };
+      if (c.bg256) cfg.colors.custom[key].bg256 = c.bg256;
+      if (c.fg256) cfg.colors.custom[key].fg256 = c.fg256;
     }
   }
 
@@ -1233,13 +1400,24 @@ function getSegLabel(seg) {
 
 function getSegColors(type) {
   if (state.theme === 'custom') {
-    return {
-      bg: state.customColors[type]?.bg || '#1a1b26',
-      fg: state.customColors[type]?.fg || '#a9b1d6',
-    };
+    const c = state.customColors[type] || {};
+    if (state.previewColorMode === '256') {
+      return {
+        bg: c.bg256 || c.bg || '#1a1b26',
+        fg: c.fg256 || c.fg || '#a9b1d6',
+      };
+    }
+    return { bg: c.bg || '#1a1b26', fg: c.fg || '#a9b1d6' };
   }
   const palette = THEME_PALETTES[state.theme] || THEME_PALETTES['dark'];
   return palette[type] || { bg: '#1a1b26', fg: '#a9b1d6' };
+}
+
+function setPreviewColorMode(mode) {
+  state.previewColorMode = mode;
+  document.getElementById('pct-tc').classList.toggle('active', mode === 'truecolor');
+  document.getElementById('pct-256').classList.toggle('active', mode === '256');
+  renderPreview();
 }
 
 // SVG powerline triangle: filled triangle pointing right
@@ -1313,6 +1491,10 @@ function renderPreview() {
   if (styleLabel) styleLabel.textContent = style;
   if (themeLabel) themeLabel.textContent = theme;
 
+  // Show color mode toggle only for custom theme (built-ins have no 256 variants)
+  const toggle = document.getElementById('preview-color-toggle');
+  if (toggle) toggle.classList.toggle('visible', theme === 'custom');
+
   const hasAny = state.lines.some(l => l.segments.some(s => s.enabled));
   if (!hasAny) {
     document.getElementById('preview-segs').innerHTML =
@@ -1371,7 +1553,14 @@ function applyConfig(cfg) {
   }
   if (cfg.colors?.custom) {
     for (const [k, v] of Object.entries(cfg.colors.custom)) {
-      if (state.customColors[k]) state.customColors[k] = { ...v };
+      if (state.customColors[k]) {
+        state.customColors[k] = {
+          bg: v.bg || state.customColors[k].bg,
+          fg: v.fg || state.customColors[k].fg,
+          bg256: v.bg256 || state.customColors[k].bg256,
+          fg256: v.fg256 || state.customColors[k].fg256,
+        };
+      }
     }
   }
   if (cfg.budget) {
@@ -1496,5 +1685,7 @@ if (!loadFromLocalStorage()) {
 }
 render();
 </script>
+<div id="ansi256-popup"></div>
+
 </body>
 </html>

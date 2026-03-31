@@ -1,20 +1,20 @@
 import type { ColorTheme } from "./index";
 
 export const rosePineTheme: ColorTheme = {
-  directory: { bg: "#26233a", fg: "#c4a7e7" },
-  git: { bg: "#1f1d2e", fg: "#9ccfd8" },
-  model: { bg: "#191724", fg: "#ebbcba" },
-  session: { bg: "#26233a", fg: "#f6c177" },
-  block: { bg: "#2a273f", fg: "#eb6f92" },
-  today: { bg: "#232136", fg: "#9ccfd8" },
-  weekly: { bg: "#1e1c2e", fg: "#f6c177" },
-  tmux: { bg: "#26233a", fg: "#908caa" },
-  context: { bg: "#393552", fg: "#e0def4" },
+  directory: { bg: "#403d52", fg: "#c4a7e7" },  // highlight_med
+  git: { bg: "#2d2b40", fg: "#9ccfd8" },          // between surface and overlay
+  model: { bg: "#26233a", fg: "#ebbcba" },         // overlay (anchors the sequence)
+  session: { bg: "#403d52", fg: "#f6c177" },       // highlight_med
+  block: { bg: "#4a475e", fg: "#eb6f92" },         // between highlight_med and highlight_high
+  today: { bg: "#353246", fg: "#9ccfd8" },         // between overlay and highlight_med
+  weekly: { bg: "#302e43", fg: "#f6c177" },        // slightly above surface
+  tmux: { bg: "#403d52", fg: "#908caa" },          // highlight_med
+  context: { bg: "#524f67", fg: "#e0def4" },       // highlight_high
   contextWarning: { bg: "#f6c177", fg: "#191724" },
   contextCritical: { bg: "#eb6f92", fg: "#191724" },
-  metrics: { bg: "#524f67", fg: "#e0def4" },
-  version: { bg: "#2a273f", fg: "#c4a7e7" },
-  env: { bg: "#21202e", fg: "#eb6f92" },
+  metrics: { bg: "#5d5a72", fg: "#e0def4" },       // above highlight_high
+  version: { bg: "#4a475e", fg: "#c4a7e7" },       // between highlight_med and highlight_high
+  env: { bg: "#302e43", fg: "#eb6f92" },
 };
 
 export const rosePineAnsi256Theme: ColorTheme = {

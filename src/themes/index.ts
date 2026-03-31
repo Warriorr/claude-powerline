@@ -16,6 +16,10 @@ import { gruvboxTheme, gruvboxAnsi256Theme, gruvboxAnsiTheme } from "./gruvbox";
 export interface SegmentColor {
   bg: string;
   fg: string;
+  /** Exact 256-color palette hex used when colorSupport is ansi256. Falls back to bg if absent. */
+  bg256?: string;
+  /** Exact 256-color palette hex used when colorSupport is ansi256. Falls back to fg if absent. */
+  fg256?: string;
 }
 
 export interface ColorTheme {

@@ -63,6 +63,7 @@ echo '{"session_id":"test-session","workspace":{"project_dir":"/path/to/project"
 
     debug(`Working directory: ${process.cwd()}`);
     debug(`Process args:`, process.argv);
+    debug(`Color env: TERM=${process.env.TERM} COLORTERM=${process.env.COLORTERM} FORCE_COLOR=${process.env.FORCE_COLOR} WT_SESSION=${process.env.WT_SESSION ? "set" : "unset"} WSL_DISTRO_NAME=${process.env.WSL_DISTRO_NAME} TERM_PROGRAM=${process.env.TERM_PROGRAM}`);
 
     const hookData = (await json(process.stdin)) as ClaudeHookData;
     debug(`Received hook data:`, JSON.stringify(hookData, null, 2));
@@ -75,6 +76,7 @@ echo '{"session_id":"test-session","workspace":{"project_dir":"/path/to/project"
 
     const projectDir = hookData.workspace?.project_dir;
     const config = loadConfigFromCLI(process.argv, projectDir);
+    debug(`Config: theme=${config.theme} colorCompatibility=${config.display.colorCompatibility} style=${config.display.style}`);
     const renderer = new PowerlineRenderer(config);
     const statusline = await renderer.generateStatusline(hookData);
 

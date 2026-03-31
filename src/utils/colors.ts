@@ -93,12 +93,20 @@ export function getColorSupport(): "none" | "ansi" | "ansi256" | "truecolor" {
     return "ansi";
   }
 
-  if (env.COLORTERM === "truecolor") {
+  if (env.COLORTERM === "truecolor" || env.COLORTERM === "24bit") {
     return "truecolor";
   }
 
-  // Windows Terminal sets WT_SESSION unconditionally and has supported truecolor since v1.0
-  if (env.WT_SESSION) {
+  // Windows Terminal sets WT_SESSION and WT_PROFILE_ID since v1.0
+  if (env.WT_SESSION || env.WT_PROFILE_ID) {
+    return "truecolor";
+  }
+
+  // WSL2: WT_SESSION is a Windows process env var that does NOT automatically propagate
+  // into WSL (it's not in WSLENV by default). However, TERM=xterm-256color in WSL is
+  // always set by the host terminal — WSL itself never sets TERM. Every modern Windows
+  // terminal that sets this value (Windows Terminal, VSCode, Tabby, etc.) supports truecolor.
+  if (env.WSL_DISTRO_NAME && env.TERM === "xterm-256color") {
     return "truecolor";
   }
 
@@ -189,12 +197,11 @@ export function hexTo256Ansi(hex: string, isBackground: boolean): string {
       if (r > 248) return 231;
       return Math.round(((r - 8) / 247) * 24) + 232;
     }
-    return (
-      16 +
-      36 * Math.round((r / 255) * 5) +
-      6 * Math.round((g / 255) * 5) +
-      Math.round((b / 255) * 5)
-    );
+    // Find nearest 6-level cube index for each channel.
+    // Cube stops: [0, 95, 135, 175, 215, 255]; midpoints determine boundaries.
+    const ci = (v: number) =>
+      v < 48 ? 0 : v < 115 ? 1 : v < 155 ? 2 : v < 195 ? 3 : v < 235 ? 4 : 5;
+    return 16 + 36 * ci(r) + 6 * ci(g) + ci(b);
   };
 
   const colorCode = toAnsi256(r, g, b);

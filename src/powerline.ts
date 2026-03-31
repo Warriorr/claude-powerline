@@ -763,9 +763,13 @@ export class PowerlineRenderer {
     const getSegmentColors = (segment: Exclude<keyof ColorTheme, "tui">) => {
       const colors = colorTheme[segment] || fallbackTheme[segment];
 
-      let fgHex = colors.fg;
+      // Use 256-specific overrides when available and in ansi256 mode
+      const bgHex = colorSupport === "ansi256" && colors.bg256 ? colors.bg256 : colors.bg;
+      const baseFgHex = colorSupport === "ansi256" && colors.fg256 ? colors.fg256 : colors.fg;
+
+      let fgHex = baseFgHex;
       if (isTui && hexColorDistance(fgHex, terminalRef) < 60) {
-        fgHex = colors.bg;
+        fgHex = bgHex;
       }
 
       if (colorSupport === "none") {
@@ -775,17 +779,17 @@ export class PowerlineRenderer {
         };
       } else if (colorSupport === "ansi") {
         return {
-          bg: hexToBasicAnsi(colors.bg, true),
+          bg: hexToBasicAnsi(bgHex, true),
           fg: hexToBasicAnsi(fgHex, false),
         };
       } else if (colorSupport === "ansi256") {
         return {
-          bg: hexTo256Ansi(colors.bg, true),
+          bg: hexTo256Ansi(bgHex, true),
           fg: hexTo256Ansi(fgHex, false),
         };
       } else {
         return {
-          bg: hexToAnsi(colors.bg, true),
+          bg: hexToAnsi(bgHex, true),
           fg: hexToAnsi(fgHex, false),
         };
       }
