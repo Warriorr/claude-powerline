@@ -765,7 +765,8 @@ export class SegmentRenderer {
 
         if (config?.showProjectedPercentage && blockElapsedOk && blockInfo.projectedUsagePercentage !== null) {
           const pct = Math.round(blockInfo.projectedUsagePercentage);
-          extras.push(`↑${pct}%`);
+          const trendArrow = blockInfo.projectedUsageTrend === "down" ? "↓" : blockInfo.projectedUsageTrend === "flat" ? "→" : "↑";
+          extras.push(`${trendArrow}${pct}%`);
         }
 
         if (config?.showTimeToLimit && blockElapsedOk && blockInfo.minutesToLimit !== null) {
@@ -951,7 +952,8 @@ export class SegmentRenderer {
 
     if (config?.showProjectedPercentage && weeklyElapsedOk && weeklyInfo.projectedUsagePercentage !== null) {
       const pct = Math.round(weeklyInfo.projectedUsagePercentage);
-      extras.push(`↑${pct}%`);
+      const trendArrow = weeklyInfo.projectedUsageTrend === "down" ? "↓" : weeklyInfo.projectedUsageTrend === "flat" ? "→" : "↑";
+      extras.push(`${trendArrow}${pct}%`);
     }
 
     if (config?.showTimeToLimit && weeklyElapsedOk && weeklyInfo.minutesToLimit !== null) {

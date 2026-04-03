@@ -1,5 +1,6 @@
 import { debug } from "../utils/logger";
 import { PricingService } from "./pricing";
+import { CacheManager } from "../utils/cache";
 import { loadEntriesFromProjects, type ParsedEntry } from "../utils/claude";
 
 export interface UsageEntry {
@@ -25,6 +26,7 @@ export interface BlockInfo {
   rateLimitPercentage: number | null;
   resetsAt: Date | null;
   projectedUsagePercentage: number | null;
+  projectedUsageTrend: "up" | "down" | "flat" | null;
   minutesToLimit: number | null;
 }
 
@@ -225,6 +227,7 @@ export class BlockProvider {
           rateLimitPercentage: rateLimits?.used_percentage ?? null,
           resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
           projectedUsagePercentage: null,
+          projectedUsageTrend: null,
           minutesToLimit: null,
         };
       }
@@ -308,6 +311,7 @@ export class BlockProvider {
       );
 
       let projectedUsagePercentage: number | null = null;
+      let projectedUsageTrend: "up" | "down" | "flat" | null = null;
       let minutesToLimit: number | null = null;
       if (rateLimits?.used_percentage != null && timeElapsed !== null && timeElapsed > 0 && timeRemaining !== null) {
         const ratePerMinute = rateLimits.used_percentage / timeElapsed;
@@ -315,6 +319,15 @@ export class BlockProvider {
         if (projectedUsagePercentage > 100) {
           minutesToLimit = Math.round((100 - rateLimits.used_percentage) / ratePerMinute);
         }
+
+        const previousProjected = await CacheManager.getTrend("block");
+        if (previousProjected !== null) {
+          const diff = projectedUsagePercentage - previousProjected;
+          if (diff > 1) projectedUsageTrend = "up";
+          else if (diff < -1) projectedUsageTrend = "down";
+          else projectedUsageTrend = "flat";
+        }
+        await CacheManager.setTrend("block", projectedUsagePercentage);
       }
 
       return {
@@ -328,6 +341,7 @@ export class BlockProvider {
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
         projectedUsagePercentage,
+        projectedUsageTrend,
         minutesToLimit,
       };
     } catch (error) {
@@ -343,6 +357,7 @@ export class BlockProvider {
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
         projectedUsagePercentage: null,
+        projectedUsageTrend: null,
         minutesToLimit: null,
       };
     }

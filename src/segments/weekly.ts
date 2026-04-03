@@ -25,6 +25,7 @@ export interface WeeklyInfo {
   rateLimitPercentage: number | null;
   resetsAt: Date | null;
   projectedUsagePercentage: number | null;
+  projectedUsageTrend: "up" | "down" | "flat" | null;
   minutesToLimit: number | null;
   elapsedMinutes: number | null;
 }
@@ -165,6 +166,7 @@ export class WeeklyProvider {
           rateLimitPercentage: rateLimits?.used_percentage ?? null,
           resetsAt: emptyResetsAt,
           projectedUsagePercentage: null,
+          projectedUsageTrend: null,
           minutesToLimit: null,
           elapsedMinutes: null,
         };
@@ -205,6 +207,7 @@ export class WeeklyProvider {
       const elapsedMinutes = Math.round((now.getTime() - weekStartTime.getTime()) / (1000 * 60));
 
       let projectedUsagePercentage: number | null = null;
+      let projectedUsageTrend: "up" | "down" | "flat" | null = null;
       let minutesToLimit: number | null = null;
       if (rateLimits?.used_percentage != null && resolvedTimeLeft !== null && elapsedMinutes > 0) {
         const ratePerMinute = rateLimits.used_percentage / elapsedMinutes;
@@ -212,6 +215,15 @@ export class WeeklyProvider {
         if (projectedUsagePercentage > 100) {
           minutesToLimit = Math.round((100 - rateLimits.used_percentage) / ratePerMinute);
         }
+
+        const previousProjected = await CacheManager.getTrend("weekly");
+        if (previousProjected !== null) {
+          const diff = projectedUsagePercentage - previousProjected;
+          if (diff > 1) projectedUsageTrend = "up";
+          else if (diff < -1) projectedUsageTrend = "down";
+          else projectedUsageTrend = "flat";
+        }
+        await CacheManager.setTrend("weekly", projectedUsagePercentage);
       }
 
       return {
@@ -223,6 +235,7 @@ export class WeeklyProvider {
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt,
         projectedUsagePercentage,
+        projectedUsageTrend,
         minutesToLimit,
         elapsedMinutes,
       };
@@ -237,6 +250,7 @@ export class WeeklyProvider {
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
         projectedUsagePercentage: null,
+        projectedUsageTrend: null,
         minutesToLimit: null,
         elapsedMinutes: null,
       };
