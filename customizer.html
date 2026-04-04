@@ -526,6 +526,14 @@ const SEGMENT_DEFS = {
           <label class="toggle"><input type="checkbox" ${s.showProjectedPercentage?'checked':''} onchange="segPropBool(this,'showProjectedPercentage');update()"><span class="slider"></span></label>
         </div>
         <p class="hint" style="margin-top:2px">Extrapolates block pace vs weekly quota — e.g. ↑94% safe, ↑134% will exceed. Linear projection; accuracy improves as elapsed time grows.</p>
+        <div class="field" style="margin-top:8px">
+          <label>Trend arrow mode <span class="new-badge">NEW</span></label>
+          <select onchange="segProp(this,'trendMode');update()">
+            <option value="all" ${(s.trendMode||'all')==='all'?'selected':''}>all (↑ → ↓)</option>
+            <option value="direction-only" ${s.trendMode==='direction-only'?'selected':''}>direction only (↑ ↓)</option>
+          </select>
+          <p class="hint">all: always shows arrow · direction only: hides → when flat, so only meaningful changes are visible</p>
+        </div>
         <div class="toggle-row" style="margin-top:8px">
           <label>Show time-to-limit when critical <span class="new-badge">NEW</span> <span style="color:var(--text2);font-size:0.72rem">(experimental)</span></label>
           <label class="toggle"><input type="checkbox" ${s.showTimeToLimit?'checked':''} onchange="segPropBool(this,'showTimeToLimit');update()"><span class="slider"></span></label>
@@ -589,6 +597,14 @@ const SEGMENT_DEFS = {
           <label class="toggle"><input type="checkbox" ${s.showProjectedPercentage?'checked':''} onchange="segPropBool(this,'showProjectedPercentage');update()"><span class="slider"></span></label>
         </div>
         <p class="hint" style="margin-top:2px">Extrapolates current pace to end of period (e.g. ↑94% safe, ↑134% will exceed). Linear projection; early-week estimates may be noisy.</p>
+        <div class="field" style="margin-top:8px">
+          <label>Trend arrow mode <span class="new-badge">NEW</span></label>
+          <select onchange="segProp(this,'trendMode');update()">
+            <option value="all" ${(s.trendMode||'all')==='all'?'selected':''}>all (↑ → ↓)</option>
+            <option value="direction-only" ${s.trendMode==='direction-only'?'selected':''}>direction only (↑ ↓)</option>
+          </select>
+          <p class="hint">all: always shows arrow · direction only: hides → when flat, so only meaningful changes are visible</p>
+        </div>
         <div class="toggle-row" style="margin-top:8px">
           <label>Show time-to-limit when critical <span class="new-badge">NEW</span> <span style="color:var(--text2);font-size:0.72rem">(experimental)</span></label>
           <label class="toggle"><input type="checkbox" ${s.showTimeToLimit?'checked':''} onchange="segPropBool(this,'showTimeToLimit');update()"><span class="slider"></span></label>
@@ -1349,7 +1365,7 @@ function getSegLabel(seg) {
         extras.push(pctMode === 'used' ? '62% spent' : '38% left');
       }
       if (seg.showElapsed) extras.push('30m used');
-      if (seg.showProjectedPercentage) extras.push('↑94%');
+      if (seg.showProjectedPercentage) extras.push(seg.trendMode === 'direction-only' ? '↑94%' : '→94%');
       if (seg.showTimeToLimit) extras.push('⚡~1h');
       extras.push('2h 30m left');
       main += ` (${extras.join(', ')})`;
@@ -1369,6 +1385,8 @@ function getSegLabel(seg) {
         extras.push(pctMode === 'left' ? '82% left' : '18% spent');
       }
       if (seg.showTimeLeft)   extras.push('3d 14h left');
+      if (seg.showProjectedPercentage) extras.push(seg.trendMode === 'direction-only' ? '↓72%' : '→72%');
+      if (seg.showTimeToLimit) extras.push('⚡~3h');
       if (extras.length) main += ` (${extras.join(', ')})`;
       return weeklyIcon + main;
     }

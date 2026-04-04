@@ -71,6 +71,8 @@ export interface BlockSegmentConfig extends SegmentConfig {
   showPercentage?: boolean;
   percentageMode?: "left" | "used";
   showProjectedPercentage?: boolean;
+  /** "all" shows ↑→↓, "direction-only" hides → so only up/down changes appear */
+  trendMode?: "all" | "direction-only";
   showTimeToLimit?: boolean;
   minElapsedMinutes?: number;
   showIcon?: boolean;
@@ -87,6 +89,8 @@ export interface WeeklySegmentConfig extends SegmentConfig {
   showPercentage?: boolean;
   percentageMode?: "left" | "used";
   showProjectedPercentage?: boolean;
+  /** "all" shows ↑→↓, "direction-only" hides → so only up/down changes appear */
+  trendMode?: "all" | "direction-only";
   showTimeToLimit?: boolean;
   minElapsedMinutes?: number;
   showIcon?: boolean;
@@ -765,7 +769,10 @@ export class SegmentRenderer {
 
         if (config?.showProjectedPercentage && blockElapsedOk && blockInfo.projectedUsagePercentage !== null) {
           const pct = Math.round(blockInfo.projectedUsagePercentage);
-          const trendArrow = blockInfo.projectedUsageTrend === "down" ? "↓" : blockInfo.projectedUsageTrend === "flat" ? "→" : "↑";
+          const directionOnly = config?.trendMode === "direction-only";
+          const trendArrow = blockInfo.projectedUsageTrend === "down" ? "↓"
+            : blockInfo.projectedUsageTrend === "up" ? "↑"
+            : directionOnly ? "" : "→";
           extras.push(`${trendArrow}${pct}%`);
         }
 
@@ -952,7 +959,10 @@ export class SegmentRenderer {
 
     if (config?.showProjectedPercentage && weeklyElapsedOk && weeklyInfo.projectedUsagePercentage !== null) {
       const pct = Math.round(weeklyInfo.projectedUsagePercentage);
-      const trendArrow = weeklyInfo.projectedUsageTrend === "down" ? "↓" : weeklyInfo.projectedUsageTrend === "flat" ? "→" : "↑";
+      const directionOnly = config?.trendMode === "direction-only";
+      const trendArrow = weeklyInfo.projectedUsageTrend === "down" ? "↓"
+        : weeklyInfo.projectedUsageTrend === "up" ? "↑"
+        : directionOnly ? "" : "→";
       extras.push(`${trendArrow}${pct}%`);
     }
 
