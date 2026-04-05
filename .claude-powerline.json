@@ -32,7 +32,15 @@
           "block": {
             "enabled": true,
             "type": "weighted",
-            "burnType": "tokens"
+            "burnType": "tokens",
+            "showProjectedPercentage": true,
+            "trendMode": "direction-only"
+          },
+          "weekly": {
+            "enabled": true,
+            "type": "cost",
+            "showProjectedPercentage": true,
+            "trendMode": "direction-only"
           },
           "version": {
             "enabled": true

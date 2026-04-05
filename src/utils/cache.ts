@@ -230,7 +230,7 @@ export class CacheManager {
     try {
       await this.ensureCacheDirectories();
       const trendPath = path.join(this.USAGE_CACHE_DIR, "trends.json");
-      let trends: Record<string, number> = {};
+      let trends: Record<string, number | string> = {};
       try {
         const content = await fs.promises.readFile(trendPath, "utf-8");
         trends = JSON.parse(content);
@@ -241,6 +241,42 @@ export class CacheManager {
       await fs.promises.writeFile(trendPath, JSON.stringify(trends), "utf-8");
     } catch (error) {
       debug("Failed to save trend:", error);
+    }
+  }
+
+  static async getLastTrendDirection(
+    key: "block" | "weekly",
+  ): Promise<"up" | "down" | null> {
+    try {
+      await this.ensureCacheDirectories();
+      const trendPath = path.join(this.USAGE_CACHE_DIR, "trends.json");
+      const content = await fs.promises.readFile(trendPath, "utf-8");
+      const trends = JSON.parse(content);
+      const val = trends[`${key}_direction`];
+      return val === "up" || val === "down" ? val : null;
+    } catch {
+      return null;
+    }
+  }
+
+  static async setLastTrendDirection(
+    key: "block" | "weekly",
+    direction: "up" | "down",
+  ): Promise<void> {
+    try {
+      await this.ensureCacheDirectories();
+      const trendPath = path.join(this.USAGE_CACHE_DIR, "trends.json");
+      let trends: Record<string, number | string> = {};
+      try {
+        const content = await fs.promises.readFile(trendPath, "utf-8");
+        trends = JSON.parse(content);
+      } catch {
+        // file doesn't exist yet
+      }
+      trends[`${key}_direction`] = direction;
+      await fs.promises.writeFile(trendPath, JSON.stringify(trends), "utf-8");
+    } catch (error) {
+      debug("Failed to save trend direction:", error);
     }
   }
 

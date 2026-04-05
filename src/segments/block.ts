@@ -27,6 +27,8 @@ export interface BlockInfo {
   resetsAt: Date | null;
   projectedUsagePercentage: number | null;
   projectedUsageTrend: "up" | "down" | "flat" | null;
+  /** Last non-flat trend direction, for sticky arrow in direction-only mode */
+  lastNonFlatTrend: "up" | "down" | null;
   minutesToLimit: number | null;
 }
 
@@ -228,6 +230,7 @@ export class BlockProvider {
           resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
           projectedUsagePercentage: null,
           projectedUsageTrend: null,
+          lastNonFlatTrend: null,
           minutesToLimit: null,
         };
       }
@@ -312,6 +315,7 @@ export class BlockProvider {
 
       let projectedUsagePercentage: number | null = null;
       let projectedUsageTrend: "up" | "down" | "flat" | null = null;
+      let lastNonFlatTrend: "up" | "down" | null = null;
       let minutesToLimit: number | null = null;
       if (rateLimits?.used_percentage != null && timeElapsed !== null && timeElapsed > 0 && timeRemaining !== null) {
         const ratePerMinute = rateLimits.used_percentage / timeElapsed;
@@ -323,10 +327,17 @@ export class BlockProvider {
         const previousProjected = await CacheManager.getTrend("block");
         if (previousProjected !== null) {
           const diff = projectedUsagePercentage - previousProjected;
-          if (diff > 1) projectedUsageTrend = "up";
-          else if (diff < -1) projectedUsageTrend = "down";
-          else projectedUsageTrend = "flat";
+          if (diff > 1) {
+            projectedUsageTrend = "up";
+            await CacheManager.setLastTrendDirection("block", "up");
+          } else if (diff < -1) {
+            projectedUsageTrend = "down";
+            await CacheManager.setLastTrendDirection("block", "down");
+          } else {
+            projectedUsageTrend = "flat";
+          }
         }
+        lastNonFlatTrend = await CacheManager.getLastTrendDirection("block");
         await CacheManager.setTrend("block", projectedUsagePercentage);
       }
 
@@ -342,6 +353,7 @@ export class BlockProvider {
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
         projectedUsagePercentage,
         projectedUsageTrend,
+        lastNonFlatTrend,
         minutesToLimit,
       };
     } catch (error) {
@@ -358,6 +370,7 @@ export class BlockProvider {
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
         projectedUsagePercentage: null,
         projectedUsageTrend: null,
+        lastNonFlatTrend: null,
         minutesToLimit: null,
       };
     }

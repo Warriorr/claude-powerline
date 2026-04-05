@@ -26,6 +26,8 @@ export interface WeeklyInfo {
   resetsAt: Date | null;
   projectedUsagePercentage: number | null;
   projectedUsageTrend: "up" | "down" | "flat" | null;
+  /** Last non-flat trend direction, for sticky arrow in direction-only mode */
+  lastNonFlatTrend: "up" | "down" | null;
   minutesToLimit: number | null;
   elapsedMinutes: number | null;
 }
@@ -167,6 +169,7 @@ export class WeeklyProvider {
           resetsAt: emptyResetsAt,
           projectedUsagePercentage: null,
           projectedUsageTrend: null,
+          lastNonFlatTrend: null,
           minutesToLimit: null,
           elapsedMinutes: null,
         };
@@ -208,6 +211,7 @@ export class WeeklyProvider {
 
       let projectedUsagePercentage: number | null = null;
       let projectedUsageTrend: "up" | "down" | "flat" | null = null;
+      let lastNonFlatTrend: "up" | "down" | null = null;
       let minutesToLimit: number | null = null;
       if (rateLimits?.used_percentage != null && resolvedTimeLeft !== null && elapsedMinutes > 0) {
         const ratePerMinute = rateLimits.used_percentage / elapsedMinutes;
@@ -219,10 +223,17 @@ export class WeeklyProvider {
         const previousProjected = await CacheManager.getTrend("weekly");
         if (previousProjected !== null) {
           const diff = projectedUsagePercentage - previousProjected;
-          if (diff > 1) projectedUsageTrend = "up";
-          else if (diff < -1) projectedUsageTrend = "down";
-          else projectedUsageTrend = "flat";
+          if (diff > 1) {
+            projectedUsageTrend = "up";
+            await CacheManager.setLastTrendDirection("weekly", "up");
+          } else if (diff < -1) {
+            projectedUsageTrend = "down";
+            await CacheManager.setLastTrendDirection("weekly", "down");
+          } else {
+            projectedUsageTrend = "flat";
+          }
         }
+        lastNonFlatTrend = await CacheManager.getLastTrendDirection("weekly");
         await CacheManager.setTrend("weekly", projectedUsagePercentage);
       }
 
@@ -236,6 +247,7 @@ export class WeeklyProvider {
         resetsAt,
         projectedUsagePercentage,
         projectedUsageTrend,
+        lastNonFlatTrend,
         minutesToLimit,
         elapsedMinutes,
       };
@@ -251,6 +263,7 @@ export class WeeklyProvider {
         resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
         projectedUsagePercentage: null,
         projectedUsageTrend: null,
+        lastNonFlatTrend: null,
         minutesToLimit: null,
         elapsedMinutes: null,
       };

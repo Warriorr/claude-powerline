@@ -772,7 +772,9 @@ export class SegmentRenderer {
           const directionOnly = config?.trendMode === "direction-only";
           const trendArrow = blockInfo.projectedUsageTrend === "down" ? "↓"
             : blockInfo.projectedUsageTrend === "up" ? "↑"
-            : directionOnly ? "" : "→";
+            : directionOnly
+              ? (blockInfo.lastNonFlatTrend === "down" ? "↓" : blockInfo.lastNonFlatTrend === "up" ? "↑" : "")
+              : "→";
           extras.push(`${trendArrow}${pct}%`);
         }
 
@@ -962,7 +964,9 @@ export class SegmentRenderer {
       const directionOnly = config?.trendMode === "direction-only";
       const trendArrow = weeklyInfo.projectedUsageTrend === "down" ? "↓"
         : weeklyInfo.projectedUsageTrend === "up" ? "↑"
-        : directionOnly ? "" : "→";
+        : directionOnly
+          ? (weeklyInfo.lastNonFlatTrend === "down" ? "↓" : weeklyInfo.lastNonFlatTrend === "up" ? "↑" : "")
+          : "→";
       extras.push(`${trendArrow}${pct}%`);
     }
 
