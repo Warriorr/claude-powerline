@@ -29,6 +29,7 @@ export interface TuiData {
   metricsInfo: MetricsInfo | null;
   gitInfo: GitInfo | null;
   tmuxSessionId: string | null;
+  speed: string | null;
   colors: PowerlineColors;
 }
 

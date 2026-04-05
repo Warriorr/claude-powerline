@@ -56,7 +56,7 @@ export function renderTuiPanel(
 
   const lines: string[] = [];
 
-  lines.push(buildTitleBar(data, box, innerWidth));
+  lines.push(buildTitleBar(data, box, innerWidth, config));
 
   const contextLine = buildContextLine(data, contentWidth, sym, reset, colors);
   if (contextLine) {

@@ -67,6 +67,11 @@ echo '{"session_id":"test-session","workspace":{"project_dir":"/path/to/project"
 
     const hookData = (await json(process.stdin)) as ClaudeHookData;
     debug(`Received hook data:`, JSON.stringify(hookData, null, 2));
+    // Temporary: dump all top-level keys to debug file
+    try {
+      const fs = await import("node:fs");
+      fs.writeFileSync("/tmp/claude-hook-dump.json", JSON.stringify(hookData, null, 2));
+    } catch {}
 
     if (!hookData) {
       console.error("Error: No input data received from stdin");

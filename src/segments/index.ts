@@ -22,6 +22,7 @@ export type {
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
+  ModelSegmentConfig,
 } from "./renderer";
 export { WeeklyProvider } from "./weekly";
 export type { WeeklyInfo } from "./weekly";

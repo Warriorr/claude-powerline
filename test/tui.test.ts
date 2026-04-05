@@ -44,6 +44,7 @@ function makeTuiData(overrides: Partial<TuiData> = {}): TuiData {
     metricsInfo: { responseTime: 2.3, lastResponseTime: null, sessionDuration: 125, messageCount: 12, linesAdded: 48, linesRemoved: 15 },
     gitInfo: { branch: "feat/tui-mode", status: "dirty", ahead: 2, behind: 0 },
     tmuxSessionId: "dev",
+    speed: null,
     colors: PLAIN_COLORS,
     ...overrides,
   };

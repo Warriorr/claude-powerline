@@ -1,4 +1,5 @@
 import type { PowerlineConfig } from "../config/loader";
+import type { ModelSegmentConfig } from "../segments/renderer";
 import type { PowerlineColors } from "../themes";
 import type { TuiData, SymbolSet, BoxChars } from "./types";
 
@@ -18,9 +19,25 @@ export function buildTitleBar(
   data: TuiData,
   box: BoxChars,
   innerWidth: number,
+  config?: PowerlineConfig,
 ): string {
   const rawName = data.hookData.model?.display_name || "Claude";
-  const modelName = formatModelName(rawName).toLowerCase();
+  let modelName = formatModelName(rawName).toLowerCase();
+
+  // Show reasoning effort level when available (future Claude Code feature)
+  const modelConfig = config?.display?.lines?.[0]?.segments?.model as ModelSegmentConfig | undefined;
+  if (modelConfig?.showEffort && (data.hookData as unknown as Record<string, unknown>).reasoning_effort) {
+    modelName += ` [${(data.hookData as unknown as Record<string, unknown>).reasoning_effort}]`;
+  }
+
+  // Show output speed mode from transcript
+  if (modelConfig?.showSpeed && data.speed) {
+    const hide = modelConfig.showSpeedOnlyNonStandard && data.speed === "standard";
+    if (!hide) {
+      modelName += ` [${data.speed}]`;
+    }
+  }
+
   const toolName = "claude-powerline";
 
   const leftText = ` ${modelName} `;

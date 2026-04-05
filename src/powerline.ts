@@ -1,4 +1,5 @@
 import type { ClaudeHookData } from "./utils/claude";
+import { getSpeedFromTranscript } from "./utils/claude";
 import type { PowerlineColors, ColorTheme } from "./themes";
 import type { PowerlineConfig, LineConfig } from "./config/loader";
 import {
@@ -33,6 +34,7 @@ import {
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
+  ModelSegmentConfig,
 } from "./segments";
 import { BlockProvider, BlockInfo } from "./segments/block";
 import { TodayProvider, TodayInfo } from "./segments/today";
@@ -66,6 +68,7 @@ export class PowerlineRenderer {
   private _tmuxService?: TmuxService;
   private _metricsProvider?: MetricsProvider;
   private _segmentRenderer?: SegmentRenderer;
+  private currentSpeed: string | null = null;
 
   constructor(private readonly config: PowerlineConfig) {
     this.symbols = this.initializeSymbols();
@@ -141,6 +144,14 @@ export class PowerlineRenderer {
   }
 
   async generateStatusline(hookData: ClaudeHookData): Promise<string> {
+    // Fetch speed from transcript if model segment needs it
+    const modelConfig = this.config.display.lines
+      .map((line) => line.segments.model)
+      .find((c) => c?.enabled) as ModelSegmentConfig | undefined;
+    if ((modelConfig?.showSpeed || modelConfig?.showEffort) && hookData.transcript_path) {
+      this.currentSpeed = await getSpeedFromTranscript(hookData.transcript_path);
+    }
+
     if (this.config.display.style === "tui") {
       return this.generateTuiStatusline(hookData);
     }
@@ -359,6 +370,7 @@ export class PowerlineRenderer {
       metricsInfo,
       gitInfo,
       tmuxSessionId,
+      speed: this.currentSpeed,
       colors,
     };
 
@@ -488,7 +500,7 @@ export class PowerlineRenderer {
       );
     }
     if (segment.type === "model") {
-      return this.segmentRenderer.renderModel(hookData, colors);
+      return this.segmentRenderer.renderModel(hookData, colors, segment.config as ModelSegmentConfig, this.currentSpeed);
     }
 
     if (segment.type === "git") {

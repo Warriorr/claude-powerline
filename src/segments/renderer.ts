@@ -108,6 +108,16 @@ export interface EnvSegmentConfig extends SegmentConfig {
   prefix?: string;
 }
 
+export interface ModelSegmentConfig extends SegmentConfig {
+  /** Show reasoning effort level (low/medium/high/max/auto).
+   *  Not yet available in Claude Code hook data — reserved for future use. */
+  showEffort?: boolean;
+  /** Show the output speed mode (standard/fast) from the transcript */
+  showSpeed?: boolean;
+  /** When true, only show speed label when it's not "standard" (i.e. only show [fast]) */
+  showSpeedOnlyNonStandard?: boolean;
+}
+
 export type AnySegmentConfig =
   | SegmentConfig
   | DirectorySegmentConfig
@@ -121,7 +131,8 @@ export type AnySegmentConfig =
   | WeeklySegmentConfig
   | VersionSegmentConfig
   | SessionIdSegmentConfig
-  | EnvSegmentConfig;
+  | EnvSegmentConfig
+  | ModelSegmentConfig;
 
 import {
   formatCost,
@@ -341,12 +352,27 @@ export class SegmentRenderer {
     };
   }
 
-  renderModel(hookData: ClaudeHookData, colors: PowerlineColors): SegmentData {
+  renderModel(hookData: ClaudeHookData, colors: PowerlineColors, config?: ModelSegmentConfig, speed?: string | null): SegmentData {
     const rawName = hookData.model?.display_name || "Claude";
     const modelName = formatModelName(rawName);
 
+    let text = `${this.symbols.model} ${modelName}`;
+
+    // Show reasoning effort level when available (future Claude Code feature)
+    if (config?.showEffort && (hookData as unknown as Record<string, unknown>).reasoning_effort) {
+      text += ` [${(hookData as unknown as Record<string, unknown>).reasoning_effort}]`;
+    }
+
+    // Show output speed mode from transcript
+    if (config?.showSpeed && speed) {
+      const hide = config.showSpeedOnlyNonStandard && speed === "standard";
+      if (!hide) {
+        text += ` [${speed}]`;
+      }
+    }
+
     return {
-      text: `${this.symbols.model} ${modelName}`,
+      text,
       bgColor: colors.modelBg,
       fgColor: colors.modelFg,
     };

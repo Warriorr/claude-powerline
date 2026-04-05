@@ -459,8 +459,18 @@ const SEGMENT_DEFS = {
   },
   model: {
     label: 'model', color: '#e0af68',
-    defaults: { enabled: true },
-    render() { return '<p class="hint">No additional options.</p>'; }
+    defaults: { enabled: true, showSpeed: false, showSpeedOnlyNonStandard: true },
+    render(s) {
+      return `
+        <!-- showEffort: reasoning effort level (low/medium/high/max/auto)
+             Not yet available in Claude Code hook data — uncomment when supported.
+        ${toggleFields(s, [['showEffort','Show effort level']])}
+        -->` +
+        toggleFields(s, [
+          ['showSpeed','Show speed mode'],
+          ['showSpeedOnlyNonStandard','Only show when not standard'],
+        ]);
+    }
   },
   git: {
     label: 'git', color: '#7aa2f7',
@@ -1311,7 +1321,12 @@ function getSegLabel(seg) {
       if (seg.style === 'fish')     return '~/p/myapp';
       return '~/projects/myapp';
 
-    case 'model':     return ' claude-sonnet';
+    case 'model': {
+      let modelLabel = ' claude-sonnet';
+      if (seg.showSpeed && !seg.showSpeedOnlyNonStandard) modelLabel += ' [standard]';
+      if (seg.showSpeed && seg.showSpeedOnlyNonStandard) modelLabel += ' [fast]';
+      return modelLabel;
+    }
     case 'git': {
       const parts = [];
       if (seg.showRepoName)         parts.push('myapp');

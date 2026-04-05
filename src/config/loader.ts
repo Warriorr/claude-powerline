@@ -17,13 +17,14 @@ import type {
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
+  ModelSegmentConfig,
 } from "../segments/renderer";
 
 export interface LineConfig {
   segments: {
     directory?: DirectorySegmentConfig;
     git?: GitSegmentConfig;
-    model?: SegmentConfig;
+    model?: ModelSegmentConfig;
     session?: UsageSegmentConfig;
     block?: BlockSegmentConfig;
     today?: TodaySegmentConfig;

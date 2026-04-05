@@ -481,3 +481,48 @@ export async function loadEntriesFromProjects(
 
   return deduplicatedEntries;
 }
+
+
+/**
+ * Read the speed/effort mode from the last assistant entry in the transcript.
+ * Returns "standard" or "fast" (or null if unavailable).
+ */
+export async function getSpeedFromTranscript(
+  transcriptPath: string,
+): Promise<string | null> {
+  try {
+    if (!existsSync(transcriptPath)) return null;
+
+    const stats = await stat(transcriptPath);
+    const { open } = await import("node:fs/promises");
+    const fd = await open(transcriptPath, "r");
+    try {
+      // Read the last 8KB of the file to find the last assistant entry
+      const readSize = Math.min(stats.size, 8192);
+      const buffer = Buffer.alloc(readSize);
+      await fd.read(buffer, 0, readSize, stats.size - readSize);
+      const tail = buffer.toString("utf-8");
+
+      const lines = tail.split("\n").filter((l) => l.trim());
+
+      // Walk backwards to find the last assistant entry with speed
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const obj = JSON.parse(lines[i]!);
+          if (obj.type === "assistant" && obj.message?.usage?.speed) {
+            return obj.message.usage.speed;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } finally {
+      await fd.close();
+    }
+
+    return null;
+  } catch (error) {
+    debug("Failed to read speed from transcript:", error);
+    return null;
+  }
+}
