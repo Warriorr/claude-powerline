@@ -34,51 +34,7 @@ jobs:
           fi
 
       - name: Transform pricing data
-        run: |
-          node -e "
-          const fs = require('fs');
-          
-          const litellmData = JSON.parse(fs.readFileSync('litellm-pricing.json', 'utf-8'));
-          
-          const transformed = {
-            '_meta': {
-              'source': 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json',
-              'updated': new Date().toISOString().split('T')[0],
-              'currency': 'USD',
-              'unit': 'per_million_tokens'
-            }
-          };
-          
-          for (const [modelId, modelData] of Object.entries(litellmData)) {
-            if (!modelId.startsWith('claude-') || !modelData || typeof modelData !== 'object') {
-              continue;
-            }
-            
-            const data = modelData;
-            const inputPrice = data.input_cost_per_token || data.prompt_cost_per_token || 0;
-            const outputPrice = data.output_cost_per_token || data.completion_cost_per_token || 0;
-            
-            if (inputPrice === 0 || outputPrice === 0) continue;
-            
-            const inputPerMillion = inputPrice * 1_000_000;
-            const outputPerMillion = outputPrice * 1_000_000;
-            const cacheWrite5m = inputPerMillion * 1.25;
-            const cacheWrite1h = inputPerMillion * 2.0;
-            const cacheRead = inputPerMillion * 0.1;
-            
-            transformed[modelId] = {
-              'name': data.litellm_provider_display_name || modelId,
-              'input': Math.round(inputPerMillion * 100) / 100,
-              'output': Math.round(outputPerMillion * 100) / 100,
-              'cache_write_5m': Math.round(cacheWrite5m * 100) / 100,
-              'cache_write_1h': Math.round(cacheWrite1h * 100) / 100,
-              'cache_read': Math.round(cacheRead * 100) / 100
-            };
-          }
-          
-          fs.writeFileSync('pricing.json', JSON.stringify(transformed, null, 2) + '\n');
-          console.log(\`Updated pricing for \${Object.keys(transformed).length - 1} models\`);
-          "
+        run: node .github/scripts/transform-pricing.mjs
 
       - name: Check for changes
         id: check-changes

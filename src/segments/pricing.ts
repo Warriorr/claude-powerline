@@ -12,30 +12,6 @@ export interface ModelPricing {
   output: number;
 }
 const OFFLINE_PRICING_DATA: Record<string, ModelPricing> = {
-  "claude-3-haiku-20240307": {
-    name: "Claude 3 Haiku",
-    input: 0.25,
-    output: 1.25,
-    cache_write_5m: 0.3,
-    cache_write_1h: 0.5,
-    cache_read: 0.03,
-  },
-  "claude-3-5-haiku-20241022": {
-    name: "Claude 3.5 Haiku",
-    input: 0.8,
-    output: 4.0,
-    cache_write_5m: 1.0,
-    cache_write_1h: 1.6,
-    cache_read: 0.08,
-  },
-  "claude-3-5-haiku-latest": {
-    name: "Claude 3.5 Haiku Latest",
-    input: 1.0,
-    output: 5.0,
-    cache_write_5m: 1.25,
-    cache_write_1h: 2.0,
-    cache_read: 0.1,
-  },
   "claude-haiku-4-5-20251001": {
     name: "Claude Haiku 4.5",
     input: 1.0,
@@ -51,46 +27,6 @@ const OFFLINE_PRICING_DATA: Record<string, ModelPricing> = {
     cache_write_5m: 1.25,
     cache_write_1h: 2.0,
     cache_read: 0.1,
-  },
-  "claude-3-opus-latest": {
-    name: "Claude 3 Opus Latest",
-    input: 15.0,
-    output: 75.0,
-    cache_write_5m: 18.75,
-    cache_write_1h: 30.0,
-    cache_read: 1.5,
-  },
-  "claude-3-opus-20240229": {
-    name: "Claude 3 Opus",
-    input: 15.0,
-    output: 75.0,
-    cache_write_5m: 18.75,
-    cache_write_1h: 30.0,
-    cache_read: 1.5,
-  },
-  "claude-3-5-sonnet-latest": {
-    name: "Claude 3.5 Sonnet Latest",
-    input: 3.0,
-    output: 15.0,
-    cache_write_5m: 3.75,
-    cache_write_1h: 6.0,
-    cache_read: 0.3,
-  },
-  "claude-3-5-sonnet-20240620": {
-    name: "Claude 3.5 Sonnet",
-    input: 3.0,
-    output: 15.0,
-    cache_write_5m: 3.75,
-    cache_write_1h: 6.0,
-    cache_read: 0.3,
-  },
-  "claude-3-5-sonnet-20241022": {
-    name: "Claude 3.5 Sonnet",
-    input: 3.0,
-    output: 15.0,
-    cache_write_5m: 3.75,
-    cache_write_1h: 6.0,
-    cache_read: 0.3,
   },
   "claude-opus-4-20250514": {
     name: "Claude Opus 4",
@@ -190,22 +126,6 @@ const OFFLINE_PRICING_DATA: Record<string, ModelPricing> = {
   },
   "claude-sonnet-4-6": {
     name: "Claude Sonnet 4.6",
-    input: 3.0,
-    output: 15.0,
-    cache_write_5m: 3.75,
-    cache_write_1h: 6.0,
-    cache_read: 0.3,
-  },
-  "claude-3-7-sonnet-latest": {
-    name: "Claude 3.7 Sonnet Latest",
-    input: 3.0,
-    output: 15.0,
-    cache_write_5m: 3.75,
-    cache_write_1h: 6.0,
-    cache_read: 0.3,
-  },
-  "claude-3-7-sonnet-20250219": {
-    name: "Claude 3.7 Sonnet",
     input: 3.0,
     output: 15.0,
     cache_write_5m: 3.75,
@@ -450,24 +370,12 @@ export class PricingService {
         fallback: "claude-sonnet-4-20250514",
       },
       {
-        pattern: ["sonnet-3.7", "3-7-sonnet"],
-        fallback: "claude-3-7-sonnet-20250219",
-      },
-      {
-        pattern: ["3-5-sonnet", "sonnet-3.5"],
-        fallback: "claude-3-5-sonnet-20241022",
-      },
-      {
         pattern: ["haiku-4.5", "4-5-haiku", "haiku-4-5"],
         fallback: "claude-haiku-4-5-20251001",
       },
-      {
-        pattern: ["3-5-haiku", "haiku-3.5"],
-        fallback: "claude-3-5-haiku-20241022",
-      },
-      { pattern: ["haiku", "3-haiku"], fallback: "claude-3-haiku-20240307" },
+      { pattern: ["haiku"], fallback: "claude-haiku-4-5-20251001" },
       { pattern: ["opus"], fallback: "claude-opus-4-20250514" },
-      { pattern: ["sonnet"], fallback: "claude-3-5-sonnet-20241022" },
+      { pattern: ["sonnet"], fallback: "claude-sonnet-4-5-20250929" },
     ];
 
     for (const { pattern, fallback } of patterns) {
@@ -479,7 +387,7 @@ export class PricingService {
     }
 
     return (
-      allPricing["claude-3-5-sonnet-20241022"] || {
+      allPricing["claude-sonnet-4-5-20250929"] || {
         name: `${modelId} (Unknown Model)`,
         input: 3.0,
         cache_write_5m: 3.75,
@@ -523,13 +431,13 @@ export class PricingService {
       if (typeof model === "string") {
         return model;
       }
-      return model?.id || "claude-3-5-sonnet-20241022";
+      return model?.id || "claude-sonnet-4-5-20250929";
     }
 
     if (entry.model_id && typeof entry.model_id === "string") {
       return entry.model_id;
     }
 
-    return "claude-3-5-sonnet-20241022";
+    return "claude-sonnet-4-5-20250929";
   }
 }
