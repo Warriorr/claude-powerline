@@ -773,7 +773,14 @@ export class PowerlineRenderer {
     const terminalRef = isLightTheme ? "#f0f0f0" : "#1e1e1e";
 
     const getSegmentColors = (segment: Exclude<keyof ColorTheme, "tui">) => {
-      const colors = colorTheme[segment] || fallbackTheme[segment];
+      const fallback = fallbackTheme[segment];
+      const custom = colorTheme[segment];
+      const colors = {
+        fg: custom?.fg || fallback.fg,
+        bg: custom?.bg || fallback.bg,
+        fg256: custom?.fg256 || fallback.fg256,
+        bg256: custom?.bg256 || fallback.bg256,
+      };
 
       // Use 256-specific overrides when available and in ansi256 mode
       const bgHex = colorSupport === "ansi256" && colors.bg256 ? colors.bg256 : colors.bg;
