@@ -110,11 +110,17 @@ export class ContextProvider {
       `Native current_usage: input=${currentUsage.input_tokens}, cache_create=${currentUsage.cache_creation_input_tokens}, cache_read=${currentUsage.cache_read_input_tokens}, total=${totalTokens} (limit: ${contextLimit})`,
     );
 
+    const nativePct = hookData.context_window?.used_percentage;
     const percentages = this.calculatePercentages(
       totalTokens,
       contextLimit,
       autocompactBuffer,
     );
+
+    if (nativePct != null) {
+      percentages.percentage = Math.round(nativePct);
+      debug(`Using native used_percentage: ${nativePct}%`);
+    }
 
     return {
       totalTokens,
