@@ -969,19 +969,6 @@ export class SegmentRenderer {
       extras.push(pctMode === "left" ? `${pct}% left` : `${pct}% spent`);
     }
 
-    if (config?.showTimeLeft && weeklyInfo.timeLeft !== null) {
-      const days = Math.floor(weeklyInfo.timeLeft / (24 * 60));
-      const hours = Math.floor((weeklyInfo.timeLeft % (24 * 60)) / 60);
-      const mins = weeklyInfo.timeLeft % 60;
-      const timeStr =
-        days > 0
-          ? `${days}d ${hours}h`
-          : hours > 0
-            ? `${hours}h ${mins}m`
-            : `${mins}m`;
-      extras.push(`${timeStr} left`);
-    }
-
     const weeklyMinElapsed = config?.minElapsedMinutes ?? 60;
     const weeklyElapsedOk = weeklyInfo.elapsedMinutes !== null && weeklyInfo.elapsedMinutes >= weeklyMinElapsed;
 
@@ -1001,6 +988,19 @@ export class SegmentRenderer {
       const m = weeklyInfo.minutesToLimit % 60;
       const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
       extras.push(`⚡~${timeStr}`);
+    }
+
+    if (config?.showTimeLeft && weeklyInfo.timeLeft !== null) {
+      const days = Math.floor(weeklyInfo.timeLeft / (24 * 60));
+      const hours = Math.floor((weeklyInfo.timeLeft % (24 * 60)) / 60);
+      const mins = weeklyInfo.timeLeft % 60;
+      const timeStr =
+        days > 0
+          ? `${days}d ${hours}h`
+          : hours > 0
+            ? `${hours}h ${mins}m`
+            : `${mins}m`;
+      extras.push(`${timeStr} left`);
     }
 
     const weeklyIconStr =
