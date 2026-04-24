@@ -109,9 +109,12 @@ export interface EnvSegmentConfig extends SegmentConfig {
 }
 
 export interface ModelSegmentConfig extends SegmentConfig {
-  /** Show reasoning effort level (low/medium/high/max/auto).
-   *  Not yet available in Claude Code hook data — reserved for future use. */
+  /** Show reasoning effort level from hook data's `effort.level` (e.g. low/medium/high) */
   showEffort?: boolean;
+  /** Show a "think" indicator when hook data's `thinking.enabled` is true */
+  showThinking?: boolean;
+  /** Custom label shown when thinking is enabled (default: "think") */
+  thinkingLabel?: string;
   /** Show the output speed mode (standard/fast) from the transcript */
   showSpeed?: boolean;
   /** When true, only show speed label when it's not "standard" (i.e. only show [fast]) */
@@ -358,12 +361,14 @@ export class SegmentRenderer {
 
     let text = `${this.symbols.model} ${modelName}`;
 
-    // Show reasoning effort level when available (future Claude Code feature)
-    if (config?.showEffort && (hookData as unknown as Record<string, unknown>).reasoning_effort) {
-      text += ` [${(hookData as unknown as Record<string, unknown>).reasoning_effort}]`;
+    if (config?.showEffort && hookData.effort?.level) {
+      text += ` [${hookData.effort.level}]`;
     }
 
-    // Show output speed mode from transcript
+    if (config?.showThinking && hookData.thinking?.enabled) {
+      text += ` [${config.thinkingLabel ?? "think"}]`;
+    }
+
     if (config?.showSpeed && speed) {
       const hide = config.showSpeedOnlyNonStandard && speed === "standard";
       if (!hide) {

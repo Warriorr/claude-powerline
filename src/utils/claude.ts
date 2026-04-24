@@ -53,6 +53,12 @@ export interface ClaudeHookData {
       resets_at: number;
     };
   };
+  effort?: {
+    level?: string;
+  };
+  thinking?: {
+    enabled?: boolean;
+  };
 }
 
 export function getClaudePaths(): string[] {

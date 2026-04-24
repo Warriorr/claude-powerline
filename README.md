@@ -293,9 +293,22 @@ Config files reload automatically and no restart needed.
 
 ```json
 "model": {
-  "enabled": true
+  "enabled": true,
+  "showEffort": false,
+  "showThinking": false,
+  "thinkingLabel": "think",
+  "showSpeed": false,
+  "showSpeedOnlyNonStandard": true
 }
 ```
+
+**Options:**
+
+- `showEffort`: Show the reasoning effort level from Claude Code's stdin JSON (`effort.level`, e.g. `low`/`medium`/`high`). Example: `✱ Sonnet 4.6 [high]`
+- `showThinking`: Show a "thinking" indicator when extended thinking is enabled (`thinking.enabled`). Example: `✱ Sonnet 4.6 [think]`
+- `thinkingLabel`: Custom label to use when thinking is enabled (default: `"think"`)
+- `showSpeed`: Show the output speed mode (`standard`/`fast`) parsed from the transcript. Example: `✱ Opus 4.7 [fast]`
+- `showSpeedOnlyNonStandard`: When `true`, only show the speed label when it's not `standard` (i.e. only `[fast]` renders). Default: `true`
 
 **Symbols:** `✱` Model (unicode) • `M` Model (text)
 

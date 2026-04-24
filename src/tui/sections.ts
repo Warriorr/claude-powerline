@@ -24,13 +24,16 @@ export function buildTitleBar(
   const rawName = data.hookData.model?.display_name || "Claude";
   let modelName = formatModelName(rawName).toLowerCase();
 
-  // Show reasoning effort level when available (future Claude Code feature)
   const modelConfig = config?.display?.lines?.[0]?.segments?.model as ModelSegmentConfig | undefined;
-  if (modelConfig?.showEffort && (data.hookData as unknown as Record<string, unknown>).reasoning_effort) {
-    modelName += ` [${(data.hookData as unknown as Record<string, unknown>).reasoning_effort}]`;
+
+  if (modelConfig?.showEffort && data.hookData.effort?.level) {
+    modelName += ` [${data.hookData.effort.level}]`;
   }
 
-  // Show output speed mode from transcript
+  if (modelConfig?.showThinking && data.hookData.thinking?.enabled) {
+    modelName += ` [${modelConfig.thinkingLabel ?? "think"}]`;
+  }
+
   if (modelConfig?.showSpeed && data.speed) {
     const hide = modelConfig.showSpeedOnlyNonStandard && data.speed === "standard";
     if (!hide) {

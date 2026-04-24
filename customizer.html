@@ -459,17 +459,18 @@ const SEGMENT_DEFS = {
   },
   model: {
     label: 'model', color: '#e0af68',
-    defaults: { enabled: true, showSpeed: false, showSpeedOnlyNonStandard: true },
+    defaults: { enabled: true, showEffort: false, showThinking: false, showSpeed: false, showSpeedOnlyNonStandard: true },
     render(s) {
-      return `
-        <!-- showEffort: reasoning effort level (low/medium/high/max/auto)
-             Not yet available in Claude Code hook data — uncomment when supported.
-        ${toggleFields(s, [['showEffort','Show effort level']])}
-        -->` +
-        toggleFields(s, [
-          ['showSpeed','Show speed mode'],
-          ['showSpeedOnlyNonStandard','Only show when not standard'],
-        ]);
+      return toggleFields(s, [
+        ['showEffort','Show effort level (from effort.level)'],
+        ['showThinking','Show thinking indicator (from thinking.enabled)'],
+        ['showSpeed','Show speed mode'],
+        ['showSpeedOnlyNonStandard','Only show speed when not standard'],
+      ]) + `
+        <div class="field"><label>Thinking label</label>
+          <input type="text" value="${s.thinkingLabel ?? ''}" placeholder="think"
+            oninput="segPropStr(this,'thinkingLabel');update()"></div>
+        <p class="hint">Effort and thinking come from Claude Code's status-line stdin JSON (<code>effort.level</code>, <code>thinking.enabled</code>). Speed is parsed from the transcript.</p>`;
     }
   },
   git: {
@@ -749,6 +750,12 @@ function segPropBool(el, key) {
   const seg = getSegFromEl(el);
   if (!seg) return;
   seg[key] = el.checked;
+}
+function segPropStr(el, key) {
+  const seg = getSegFromEl(el);
+  if (!seg) return;
+  const v = el.value.trim();
+  if (v) seg[key] = v; else delete seg[key];
 }
 function getSegFromEl(el) {
   const card = el.closest('[data-li][data-si]');
@@ -1323,6 +1330,8 @@ function getSegLabel(seg) {
 
     case 'model': {
       let modelLabel = ' claude-sonnet';
+      if (seg.showEffort) modelLabel += ' [high]';
+      if (seg.showThinking) modelLabel += ' [' + (seg.thinkingLabel || 'think') + ']';
       if (seg.showSpeed && !seg.showSpeedOnlyNonStandard) modelLabel += ' [standard]';
       if (seg.showSpeed && seg.showSpeedOnlyNonStandard) modelLabel += ' [fast]';
       return modelLabel;

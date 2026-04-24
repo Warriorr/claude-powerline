@@ -148,7 +148,7 @@ export class PowerlineRenderer {
     const modelConfig = this.config.display.lines
       .map((line) => line.segments.model)
       .find((c) => c?.enabled) as ModelSegmentConfig | undefined;
-    if ((modelConfig?.showSpeed || modelConfig?.showEffort) && hookData.transcript_path) {
+    if (modelConfig?.showSpeed && hookData.transcript_path) {
       this.currentSpeed = await getSpeedFromTranscript(hookData.transcript_path);
     }
 
