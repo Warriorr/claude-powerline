@@ -35,7 +35,7 @@ describe("config", () => {
     it("should merge project config over defaults", () => {
       const projectConfig = { theme: "dark" };
       mockFs.existsSync.mockImplementation(
-        (p) => p === path.join("/project", ".claude-powerline.json")
+        (p) => p === path.join("/project", ".claude-powerline.json"),
       );
       mockFs.readFileSync.mockReturnValue(JSON.stringify(projectConfig));
 
@@ -77,7 +77,12 @@ describe("config", () => {
 
     it("should parse capsule style from CLI with space syntax", () => {
       mockFs.existsSync.mockReturnValue(false);
-      const config = loadConfigFromCLI(["node", "script", "--style", "capsule"]);
+      const config = loadConfigFromCLI([
+        "node",
+        "script",
+        "--style",
+        "capsule",
+      ]);
       expect(config.display.style).toBe("capsule");
     });
 
@@ -86,10 +91,10 @@ describe("config", () => {
       const config = loadConfigFromCLI(["node", "script", "--style=powerline"]);
       expect(config.display.style).toBe("powerline");
       expect(config.display.lines).toHaveLength(
-        DEFAULT_CONFIG.display.lines.length
+        DEFAULT_CONFIG.display.lines.length,
       );
       expect(config.display.lines[0]?.segments).toEqual(
-        DEFAULT_CONFIG.display.lines[0]?.segments
+        DEFAULT_CONFIG.display.lines[0]?.segments,
       );
     });
 
@@ -99,10 +104,10 @@ describe("config", () => {
       const config = loadConfigFromCLI(["node", "script", "--style=invalid"]);
       expect(config.display.style).toBe("minimal");
       expect(config.display.lines).toHaveLength(
-        DEFAULT_CONFIG.display.lines.length
+        DEFAULT_CONFIG.display.lines.length,
       );
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid display style")
+        expect.stringContaining("Invalid display style"),
       );
       consoleSpy.mockRestore();
     });
@@ -110,7 +115,7 @@ describe("config", () => {
     it("should load config file with --config= syntax", () => {
       const customConfig = { theme: "nord" as const };
       mockFs.existsSync.mockImplementation(
-        (path) => path === "/custom/config.json"
+        (path) => path === "/custom/config.json",
       );
       mockFs.readFileSync.mockReturnValue(JSON.stringify(customConfig));
 
@@ -125,7 +130,7 @@ describe("config", () => {
     it("should load config file with --config space syntax", () => {
       const customConfig = { theme: "rose-pine" as const };
       mockFs.existsSync.mockImplementation(
-        (path) => path === "/custom/config.json"
+        (path) => path === "/custom/config.json",
       );
       mockFs.readFileSync.mockReturnValue(JSON.stringify(customConfig));
 
@@ -141,7 +146,7 @@ describe("config", () => {
     it("should expand tilde in --config path", () => {
       const customConfig = { theme: "gruvbox" as const };
       mockFs.existsSync.mockImplementation(
-        (path) => path === "/home/user/.config/powerline.json"
+        (path) => path === "/home/user/.config/powerline.json",
       );
       mockFs.readFileSync.mockReturnValue(JSON.stringify(customConfig));
 
@@ -167,7 +172,7 @@ describe("config", () => {
       const config = loadConfig();
       expect(config.display.style).toBe("powerline");
       expect(config.display.lines).toHaveLength(
-        DEFAULT_CONFIG.display.lines.length
+        DEFAULT_CONFIG.display.lines.length,
       );
     });
 
@@ -177,7 +182,7 @@ describe("config", () => {
       const config = loadConfig();
       expect(config.display.style).toBe("capsule");
       expect(config.display.lines).toHaveLength(
-        DEFAULT_CONFIG.display.lines.length
+        DEFAULT_CONFIG.display.lines.length,
       );
     });
 
@@ -188,7 +193,7 @@ describe("config", () => {
       const config = loadConfig();
       expect(config.display.style).toBe("minimal");
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid display style")
+        expect.stringContaining("Invalid display style"),
       );
       consoleSpy.mockRestore();
     });
@@ -202,10 +207,10 @@ describe("config", () => {
 
     it("should prioritize CLI over environment over file", () => {
       mockFs.existsSync.mockImplementation(
-        (p) => p === path.join("/project", ".claude-powerline.json")
+        (p) => p === path.join("/project", ".claude-powerline.json"),
       );
       mockFs.readFileSync.mockReturnValue(
-        JSON.stringify({ theme: "light", display: { style: "minimal" } })
+        JSON.stringify({ theme: "light", display: { style: "minimal" } }),
       );
       process.env.CLAUDE_POWERLINE_THEME = "nord";
       process.env.CLAUDE_POWERLINE_STYLE = "powerline";
@@ -230,16 +235,16 @@ describe("config", () => {
     it("should fallback invalid theme in config file to dark", () => {
       const consoleSpy = jest.spyOn(console, "warn").mockImplementation();
       mockFs.existsSync.mockImplementation(
-        (p) => p === path.join("/project", ".claude-powerline.json")
+        (p) => p === path.join("/project", ".claude-powerline.json"),
       );
       mockFs.readFileSync.mockReturnValue(
-        JSON.stringify({ theme: "invalid-theme" })
+        JSON.stringify({ theme: "invalid-theme" }),
       );
 
       const config = loadConfig();
       expect(config.theme).toBe("dark");
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid theme")
+        expect.stringContaining("Invalid theme"),
       );
       consoleSpy.mockRestore();
     });
@@ -247,26 +252,26 @@ describe("config", () => {
     it("should fallback invalid style in config file to minimal", () => {
       const consoleSpy = jest.spyOn(console, "warn").mockImplementation();
       mockFs.existsSync.mockImplementation(
-        (p) => p === path.join("/project", ".claude-powerline.json")
+        (p) => p === path.join("/project", ".claude-powerline.json"),
       );
       mockFs.readFileSync.mockReturnValue(
-        JSON.stringify({ display: { style: "invalid-style" } })
+        JSON.stringify({ display: { style: "invalid-style" } }),
       );
 
       const config = loadConfig();
       expect(config.display.style).toBe("minimal");
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid display style")
+        expect.stringContaining("Invalid display style"),
       );
       consoleSpy.mockRestore();
     });
 
     it("should accept capsule style in config file", () => {
       mockFs.existsSync.mockImplementation(
-        (p) => p === path.join("/project", ".claude-powerline.json")
+        (p) => p === path.join("/project", ".claude-powerline.json"),
       );
       mockFs.readFileSync.mockReturnValue(
-        JSON.stringify({ display: { style: "capsule" } })
+        JSON.stringify({ display: { style: "capsule" } }),
       );
 
       const config = loadConfig();

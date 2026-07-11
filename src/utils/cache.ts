@@ -209,9 +209,7 @@ export class CacheManager {
     }
   }
 
-  static async getTrend(
-    key: "block" | "weekly",
-  ): Promise<number | null> {
+  static async getTrend(key: "block" | "weekly"): Promise<number | null> {
     try {
       await this.ensureCacheDirectories();
       const trendPath = path.join(this.USAGE_CACHE_DIR, "trends.json");
@@ -223,10 +221,7 @@ export class CacheManager {
     }
   }
 
-  static async setTrend(
-    key: "block" | "weekly",
-    value: number,
-  ): Promise<void> {
+  static async setTrend(key: "block" | "weekly", value: number): Promise<void> {
     try {
       await this.ensureCacheDirectories();
       const trendPath = path.join(this.USAGE_CACHE_DIR, "trends.json");

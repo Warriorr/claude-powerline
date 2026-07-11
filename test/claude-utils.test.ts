@@ -20,7 +20,11 @@ describe("findAgentTranscripts", () => {
     return subagentsDir;
   }
 
-  function writeAgentFile(subagentsDir: string, name: string, sessionId: string): string {
+  function writeAgentFile(
+    subagentsDir: string,
+    name: string,
+    sessionId: string,
+  ): string {
     const filePath = join(subagentsDir, name);
     writeFileSync(filePath, JSON.stringify({ sessionId }) + "\n");
     return filePath;
@@ -29,7 +33,11 @@ describe("findAgentTranscripts", () => {
   it("finds agent transcripts in <session-uuid>/subagents/", async () => {
     const sessionId = "abc123";
     const subagentsDir = makeSubagentsDir(sessionId);
-    const agentFile = writeAgentFile(subagentsDir, "agent-a1b2c3.jsonl", sessionId);
+    const agentFile = writeAgentFile(
+      subagentsDir,
+      "agent-a1b2c3.jsonl",
+      sessionId,
+    );
 
     const result = await findAgentTranscripts(sessionId, tempDir);
 
@@ -77,8 +85,14 @@ describe("findAgentTranscripts", () => {
     const sessionId = "abc123";
     const subagentsDir = makeSubagentsDir(sessionId);
     writeAgentFile(subagentsDir, "agent-valid.jsonl", sessionId);
-    writeFileSync(join(subagentsDir, "agent-ignored.txt"), JSON.stringify({ sessionId }) + "\n");
-    writeFileSync(join(subagentsDir, "other.jsonl"), JSON.stringify({ sessionId }) + "\n");
+    writeFileSync(
+      join(subagentsDir, "agent-ignored.txt"),
+      JSON.stringify({ sessionId }) + "\n",
+    );
+    writeFileSync(
+      join(subagentsDir, "other.jsonl"),
+      JSON.stringify({ sessionId }) + "\n",
+    );
 
     const result = await findAgentTranscripts(sessionId, tempDir);
 

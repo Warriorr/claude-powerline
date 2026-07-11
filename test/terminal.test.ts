@@ -46,7 +46,9 @@ describe("terminal utilities", () => {
 });
 
 describe("autoWrap functionality", () => {
-  const createConfig = (overrides: Partial<PowerlineConfig> = {}): PowerlineConfig => ({
+  const createConfig = (
+    overrides: Partial<PowerlineConfig> = {},
+  ): PowerlineConfig => ({
     ...DEFAULT_CONFIG,
     display: {
       ...DEFAULT_CONFIG.display,
@@ -108,7 +110,11 @@ describe("autoWrap functionality", () => {
             },
             {
               segments: {
-                session: { enabled: true, type: "tokens", costSource: "calculated" },
+                session: {
+                  enabled: true,
+                  type: "tokens",
+                  costSource: "calculated",
+                },
                 context: { enabled: true, showPercentageOnly: false },
               },
             },
@@ -141,7 +147,11 @@ describe("autoWrap functionality", () => {
             },
             {
               segments: {
-                session: { enabled: true, type: "tokens", costSource: "calculated" },
+                session: {
+                  enabled: true,
+                  type: "tokens",
+                  costSource: "calculated",
+                },
               },
             },
           ],

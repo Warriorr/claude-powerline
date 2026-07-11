@@ -212,7 +212,10 @@ export class BlockProvider {
     }
   }
 
-  async getActiveBlockInfo(rateLimits?: { used_percentage: number; resets_at: number }): Promise<BlockInfo> {
+  async getActiveBlockInfo(rateLimits?: {
+    used_percentage: number;
+    resets_at: number;
+  }): Promise<BlockInfo> {
     try {
       const entries = await this.loadUsageEntries();
 
@@ -227,7 +230,9 @@ export class BlockProvider {
           burnRate: null,
           tokenBurnRate: null,
           rateLimitPercentage: rateLimits?.used_percentage ?? null,
-          resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+          resetsAt: rateLimits?.resets_at
+            ? new Date(rateLimits.resets_at * 1000)
+            : null,
           projectedUsagePercentage: null,
           projectedUsageTrend: null,
           lastNonFlatTrend: null,
@@ -261,7 +266,10 @@ export class BlockProvider {
 
       if (rateLimits?.resets_at) {
         const resetTime = new Date(rateLimits.resets_at * 1000);
-        timeRemaining = Math.max(0, Math.round((resetTime.getTime() - now.getTime()) / (1000 * 60)));
+        timeRemaining = Math.max(
+          0,
+          Math.round((resetTime.getTime() - now.getTime()) / (1000 * 60)),
+        );
       } else if (entries.length > 0) {
         const firstEntry = entries[0];
         if (firstEntry) {
@@ -281,7 +289,8 @@ export class BlockProvider {
       }
 
       const sessionDurationMinutes = this.sessionDurationHours * 60;
-      const timeElapsed = timeRemaining !== null ? sessionDurationMinutes - timeRemaining : null;
+      const timeElapsed =
+        timeRemaining !== null ? sessionDurationMinutes - timeRemaining : null;
 
       let burnRate: number | null = null;
       let tokenBurnRate: number | null = null;
@@ -317,11 +326,19 @@ export class BlockProvider {
       let projectedUsageTrend: "up" | "down" | "flat" | null = null;
       let lastNonFlatTrend: "up" | "down" | null = null;
       let minutesToLimit: number | null = null;
-      if (rateLimits?.used_percentage != null && timeElapsed !== null && timeElapsed > 0 && timeRemaining !== null) {
+      if (
+        rateLimits?.used_percentage != null &&
+        timeElapsed !== null &&
+        timeElapsed > 0 &&
+        timeRemaining !== null
+      ) {
         const ratePerMinute = rateLimits.used_percentage / timeElapsed;
-        projectedUsagePercentage = rateLimits.used_percentage + ratePerMinute * timeRemaining;
+        projectedUsagePercentage =
+          rateLimits.used_percentage + ratePerMinute * timeRemaining;
         if (projectedUsagePercentage > 100) {
-          minutesToLimit = Math.round((100 - rateLimits.used_percentage) / ratePerMinute);
+          minutesToLimit = Math.round(
+            (100 - rateLimits.used_percentage) / ratePerMinute,
+          );
         }
 
         const previousProjected = await CacheManager.getTrend("block");
@@ -350,7 +367,9 @@ export class BlockProvider {
         burnRate,
         tokenBurnRate,
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
-        resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+        resetsAt: rateLimits?.resets_at
+          ? new Date(rateLimits.resets_at * 1000)
+          : null,
         projectedUsagePercentage,
         projectedUsageTrend,
         lastNonFlatTrend,
@@ -367,7 +386,9 @@ export class BlockProvider {
         burnRate: null,
         tokenBurnRate: null,
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
-        resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+        resetsAt: rateLimits?.resets_at
+          ? new Date(rateLimits.resets_at * 1000)
+          : null,
         projectedUsagePercentage: null,
         projectedUsageTrend: null,
         lastNonFlatTrend: null,

@@ -16,7 +16,7 @@ describe("Colors", () => {
 
     it("should convert background to foreground ANSI", () => {
       expect(extractBgToFg("\x1b[48;2;255;100;50m")).toBe(
-        "\x1b[38;2;255;100;50m"
+        "\x1b[38;2;255;100;50m",
       );
       expect(extractBgToFg("\x1b[41m")).toBe("\x1b[31m");
     });

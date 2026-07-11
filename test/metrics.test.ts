@@ -63,7 +63,7 @@ describe("Metrics Provider", () => {
     const mockHookData = createMockHookData("test-session");
     const metrics = await metricsProvider.getMetricsInfo(
       "test-session",
-      mockHookData
+      mockHookData,
     );
 
     expect(metrics.messageCount).toBe(2);
@@ -80,7 +80,7 @@ describe("Metrics Provider", () => {
     const mockHookData = createMockHookData("nonexistent-session");
     const metrics = await metricsProvider.getMetricsInfo(
       "nonexistent-session",
-      mockHookData
+      mockHookData,
     );
 
     expect(metrics.messageCount).toBe(0);
@@ -102,7 +102,7 @@ describe("Metrics Provider", () => {
     const mockHookData = createMockHookData("empty-session");
     const metrics = await metricsProvider.getMetricsInfo(
       "empty-session",
-      mockHookData
+      mockHookData,
     );
 
     expect(metrics.messageCount).toBe(0);

@@ -144,7 +144,10 @@ export class WeeklyProvider {
     }
   }
 
-  async getWeeklyInfo(rateLimits?: { used_percentage: number; resets_at: number }): Promise<WeeklyInfo> {
+  async getWeeklyInfo(rateLimits?: {
+    used_percentage: number;
+    resets_at: number;
+  }): Promise<WeeklyInfo> {
     const weekStartString = formatDate(getWeekStart());
 
     try {
@@ -153,11 +156,23 @@ export class WeeklyProvider {
       if (entries.length === 0) {
         const emptyWeekStart = getWeekStart();
         const emptyWeekDurationMs = 7 * 24 * 60 * 60 * 1000;
-        const emptyNextWeekStart = new Date(emptyWeekStart.getTime() + emptyWeekDurationMs);
-        const emptyTimeLeftMs = Math.max(0, emptyNextWeekStart.getTime() - new Date().getTime());
-        const emptyResetsAt = rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null;
+        const emptyNextWeekStart = new Date(
+          emptyWeekStart.getTime() + emptyWeekDurationMs,
+        );
+        const emptyTimeLeftMs = Math.max(
+          0,
+          emptyNextWeekStart.getTime() - new Date().getTime(),
+        );
+        const emptyResetsAt = rateLimits?.resets_at
+          ? new Date(rateLimits.resets_at * 1000)
+          : null;
         const emptyTimeLeft = emptyResetsAt
-          ? Math.max(0, Math.round((emptyResetsAt.getTime() - new Date().getTime()) / (1000 * 60)))
+          ? Math.max(
+              0,
+              Math.round(
+                (emptyResetsAt.getTime() - new Date().getTime()) / (1000 * 60),
+              ),
+            )
           : Math.round(emptyTimeLeftMs / (1000 * 60));
         return {
           cost: null,
@@ -198,26 +213,45 @@ export class WeeklyProvider {
 
       const weekDurationMs = 7 * 24 * 60 * 60 * 1000;
       const nextWeekStart = new Date(getWeekStart().getTime() + weekDurationMs);
-      const timeLeftMs = Math.max(0, nextWeekStart.getTime() - new Date().getTime());
+      const timeLeftMs = Math.max(
+        0,
+        nextWeekStart.getTime() - new Date().getTime(),
+      );
       const timeLeft = Math.round(timeLeftMs / (1000 * 60));
-      const resetsAt = rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null;
+      const resetsAt = rateLimits?.resets_at
+        ? new Date(rateLimits.resets_at * 1000)
+        : null;
       const resolvedTimeLeft = resetsAt
-        ? Math.max(0, Math.round((resetsAt.getTime() - new Date().getTime()) / (1000 * 60)))
+        ? Math.max(
+            0,
+            Math.round(
+              (resetsAt.getTime() - new Date().getTime()) / (1000 * 60),
+            ),
+          )
         : timeLeft;
 
       const now = new Date();
       const weekStartTime = getWeekStart();
-      const elapsedMinutes = Math.round((now.getTime() - weekStartTime.getTime()) / (1000 * 60));
+      const elapsedMinutes = Math.round(
+        (now.getTime() - weekStartTime.getTime()) / (1000 * 60),
+      );
 
       let projectedUsagePercentage: number | null = null;
       let projectedUsageTrend: "up" | "down" | "flat" | null = null;
       let lastNonFlatTrend: "up" | "down" | null = null;
       let minutesToLimit: number | null = null;
-      if (rateLimits?.used_percentage != null && resolvedTimeLeft !== null && elapsedMinutes > 0) {
+      if (
+        rateLimits?.used_percentage != null &&
+        resolvedTimeLeft !== null &&
+        elapsedMinutes > 0
+      ) {
         const ratePerMinute = rateLimits.used_percentage / elapsedMinutes;
-        projectedUsagePercentage = rateLimits.used_percentage + ratePerMinute * resolvedTimeLeft;
+        projectedUsagePercentage =
+          rateLimits.used_percentage + ratePerMinute * resolvedTimeLeft;
         if (projectedUsagePercentage > 100) {
-          minutesToLimit = Math.round((100 - rateLimits.used_percentage) / ratePerMinute);
+          minutesToLimit = Math.round(
+            (100 - rateLimits.used_percentage) / ratePerMinute,
+          );
         }
 
         const previousProjected = await CacheManager.getTrend("weekly");
@@ -260,7 +294,9 @@ export class WeeklyProvider {
         weekStart: weekStartString,
         timeLeft: null,
         rateLimitPercentage: rateLimits?.used_percentage ?? null,
-        resetsAt: rateLimits?.resets_at ? new Date(rateLimits.resets_at * 1000) : null,
+        resetsAt: rateLimits?.resets_at
+          ? new Date(rateLimits.resets_at * 1000)
+          : null,
         projectedUsagePercentage: null,
         projectedUsageTrend: null,
         lastNonFlatTrend: null,

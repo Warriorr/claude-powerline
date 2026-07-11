@@ -491,7 +491,6 @@ export async function loadEntriesFromProjects(
   return deduplicatedEntries;
 }
 
-
 /**
  * Read the speed/effort mode from the last assistant entry in the transcript.
  * Returns "standard" or "fast" (or null if unavailable).

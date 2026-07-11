@@ -49,7 +49,6 @@ describe("formatModelName", () => {
         "Sonnet 3",
       );
     });
-
   });
 
   describe("GCP Vertex AI models", () => {

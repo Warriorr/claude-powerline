@@ -116,7 +116,7 @@ describe("Core Functionality", () => {
     it("should override config with CLI args", () => {
       const config = loadConfigFromCLI(
         ["--theme=dark", "--style=powerline"],
-        tempDir
+        tempDir,
       );
 
       expect(config.theme).toBe("dark");
@@ -136,7 +136,9 @@ describe("Core Functionality", () => {
       const { ContextProvider } = require("../src/segments/context");
       const contextProvider = new ContextProvider(DEFAULT_CONFIG);
       const result =
-        await contextProvider.calculateContextTokensFromTranscript(transcriptPath);
+        await contextProvider.calculateContextTokensFromTranscript(
+          transcriptPath,
+        );
 
       expect(result).toBeDefined();
       expect(result.totalTokens).toBe(15000);
@@ -164,7 +166,7 @@ describe("Core Functionality", () => {
       const contextProvider = new ContextProvider(customConfig);
       const result = await contextProvider.calculateContextTokensFromTranscript(
         transcriptPath,
-        "claude-sonnet-4-20250514"
+        "claude-sonnet-4-20250514",
       );
 
       expect(result).toBeDefined();
@@ -193,7 +195,7 @@ describe("Core Functionality", () => {
       const contextProvider = new ContextProvider(customConfig);
       const result = await contextProvider.calculateContextTokensFromTranscript(
         transcriptPath,
-        "unknown-model"
+        "unknown-model",
       );
 
       expect(result).toBeDefined();
@@ -222,16 +224,18 @@ describe("Core Functionality", () => {
       const { ContextProvider } = require("../src/segments/context");
       const contextProvider = new ContextProvider(customConfig);
 
-      const sonnetResult = await contextProvider.calculateContextTokensFromTranscript(
-        transcriptPath,
-        "claude-3-5-sonnet-20241022"
-      );
+      const sonnetResult =
+        await contextProvider.calculateContextTokensFromTranscript(
+          transcriptPath,
+          "claude-3-5-sonnet-20241022",
+        );
       expect(sonnetResult?.maxTokens).toBe(500000);
 
-      const opusResult = await contextProvider.calculateContextTokensFromTranscript(
-        transcriptPath,
-        "claude-opus-4-20250514"
-      );
+      const opusResult =
+        await contextProvider.calculateContextTokensFromTranscript(
+          transcriptPath,
+          "claude-opus-4-20250514",
+        );
       expect(opusResult?.maxTokens).toBe(400000);
     });
   });

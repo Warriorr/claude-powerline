@@ -48,6 +48,17 @@ export default [
       "prettier/prettier": "error",
     },
   },
+  {
+    files: ["**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        console: "readonly",
+        process: "readonly",
+      },
+    },
+  },
   prettierConfig,
   {
     ignores: [

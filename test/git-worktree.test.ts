@@ -4,25 +4,30 @@ import { join } from "node:path";
 import { GitService } from "../src/segments/git";
 
 jest.mock("node:child_process", () => ({
-  exec: jest.fn().mockImplementation((cmd: string, _options: any, callback: any) => {
-    let result = "";
-    if (cmd.includes("git status --porcelain -b")) result = "## main\n";
-    else if (cmd.includes("git rev-list --count")) result = "0\n";
-    else if (cmd.includes("git branch --show-current")) result = "main\n";
+  exec: jest
+    .fn()
+    .mockImplementation((cmd: string, _options: any, callback: any) => {
+      let result = "";
+      if (cmd.includes("git status --porcelain -b")) result = "## main\n";
+      else if (cmd.includes("git rev-list --count")) result = "0\n";
+      else if (cmd.includes("git branch --show-current")) result = "main\n";
 
-    if (typeof callback === "function") {
-      callback(null, { stdout: result, stderr: "" });
-    }
-    return result;
-  }),
+      if (typeof callback === "function") {
+        callback(null, { stdout: result, stderr: "" });
+      }
+      return result;
+    }),
 }));
 
-function createMockExec(branch: string): (cmd: string, _options: any, callback: any) => string {
+function createMockExec(
+  branch: string,
+): (cmd: string, _options: any, callback: any) => string {
   return (cmd: string, _options: any, callback: any) => {
     let result = "";
     if (cmd.includes("git status --porcelain -b")) result = `## ${branch}\n`;
     else if (cmd.includes("git rev-list --count")) result = "0\n";
-    else if (cmd.includes("git config --get remote.origin.url")) result = "git@github.com:user/repo.git\n";
+    else if (cmd.includes("git config --get remote.origin.url"))
+      result = "git@github.com:user/repo.git\n";
     else if (cmd.includes("git branch --show-current")) result = `${branch}\n`;
 
     if (typeof callback === "function") {
@@ -56,7 +61,10 @@ describe("GitService isWorktree", () => {
 
   describe("worktree detection", () => {
     it("should set isWorktree to true when .git is a file (worktree)", async () => {
-      writeFileSync(join(tempDir, ".git"), "gitdir: /some/path/.git/worktrees/test");
+      writeFileSync(
+        join(tempDir, ".git"),
+        "gitdir: /some/path/.git/worktrees/test",
+      );
       mockExec.mockImplementation(createMockExec("main"));
 
       const info = await gitService.getGitInfo(tempDir, { showRepoName: true });
@@ -81,10 +89,17 @@ describe("GitService isWorktree", () => {
       projectDir = mkdtempSync(join(tmpdir(), "powerline-project-test-"));
       mkdirSync(join(projectDir, ".git"), { recursive: true });
 
-      writeFileSync(join(tempDir, ".git"), "gitdir: /some/path/.git/worktrees/test");
+      writeFileSync(
+        join(tempDir, ".git"),
+        "gitdir: /some/path/.git/worktrees/test",
+      );
       mockExec.mockImplementation(createMockExec("feature-branch"));
 
-      const info = await gitService.getGitInfo(tempDir, { showRepoName: true }, projectDir);
+      const info = await gitService.getGitInfo(
+        tempDir,
+        { showRepoName: true },
+        projectDir,
+      );
 
       expect(info).not.toBeNull();
       expect(info!.isWorktree).toBe(true);
