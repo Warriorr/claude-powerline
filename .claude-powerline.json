@@ -77,6 +77,10 @@
             "showStashCount": true,
             "showUpstream": true,
             "showRepoName": true
+          },
+          "cacheTimer": {
+            "enabled": true,
+            "displayMode": "remaining"
           }
         }
       }
@@ -131,6 +135,10 @@
       "version": {
         "bg": "#7a7a7a",
         "fg": "#f0f0f0"
+      },
+      "cacheTimer": {
+        "bg": "#454545",
+        "fg": "#d8d8d8"
       }
     }
   },
