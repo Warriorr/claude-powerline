@@ -432,6 +432,7 @@ const state = {
     metrics:   { bg: '#1a1b26', fg: '#a9b1d6', bg256: '#8787af', fg256: '#d7d7ff' },
     version:   { bg: '#1a1b26', fg: '#565f89', bg256: '#875f87', fg256: '#d787d7' },
     env:       { bg: '#1a1b26', fg: '#7aa2f7', bg256: '#3a3a3a', fg256: '#ff5f87' },
+    cacheTimer: { bg: '#1f2e2a', fg: '#9ece6a', bg256: '#1c3a30', fg256: '#87d787' },
   },
   budget: {
     session: { amount: '', warningThreshold: 80, type: 'cost' },
@@ -680,6 +681,34 @@ const SEGMENT_DEFS = {
       ]);
     }
   },
+  cacheTimer: {
+    label: 'cacheTimer', color: '#9ece6a',
+    defaults: { enabled: true, displayMode: 'elapsed' },
+    render(s) {
+      return `
+        <div class="field"><label>Display mode <span class="new-badge">NEW</span></label>
+          <select onchange="segProp(this,'displayMode');update()">
+            <option value="elapsed" ${(s.displayMode||'elapsed')==='elapsed'?'selected':''}>elapsed (time since last turn)</option>
+            <option value="remaining" ${s.displayMode==='remaining'?'selected':''}>remaining (time until cache expires)</option>
+          </select>
+          <p class="hint">elapsed: counts up since your last message · remaining: counts down to prompt-cache expiry, shows "cold" when expired</p></div>
+        <div class="field" style="margin-top:8px">
+          <label>Cache TTL seconds <span style="color:var(--text2);font-weight:normal;font-size:0.72rem">(leave blank to autodetect)</span></label>
+          <input type="number" min="1" value="${s.ttlSeconds||''}" placeholder="autodetect (3600 or 300)" onchange="segPropNum(this,'ttlSeconds');update()">
+          <p class="hint">Autodetected from the transcript's cache_creation usage: 1h cache → 3600, 5m cache → 300. Only used in remaining mode.</p>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
+        <div class="toggle-row">
+          <label>Show icon prefix</label>
+          <label class="toggle"><input type="checkbox" ${s.showIcon!==false?'checked':''} onchange="segPropBool(this,'showIcon');update()"><span class="slider"></span></label>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label>Custom icon <span style="color:var(--text2);font-weight:normal;font-size:0.72rem">(leave blank for default ◴)</span></label>
+          <input type="text" value="${s.customIcon||''}" placeholder="◴ or any char" onchange="segProp(this,'customIcon');update()">
+          <p class="hint">Default: ◴. Any single character or emoji works.</p>
+        </div>`;
+    }
+  },
   tmux: {
     label: 'tmux', color: '#414868',
     defaults: { enabled: true },
@@ -713,7 +742,7 @@ const SEGMENT_DEFS = {
   },
 };
 
-const COLOR_SEGMENTS = ['directory','git','model','session','block','today','weekly','tmux','context','contextWarning','contextCritical','metrics','version','env'];
+const COLOR_SEGMENTS = ['directory','git','model','session','block','today','weekly','tmux','context','contextWarning','contextCritical','metrics','version','env','cacheTimer'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -1065,7 +1094,7 @@ function renderColorGrid() {
     directory:'Directory', git:'Git', model:'Model', session:'Session',
     block:'Block', today:'Today', weekly:'Weekly', tmux:'Tmux',
     context:'Context', contextWarning:'Context Warning', contextCritical:'Context Critical',
-    metrics:'Metrics', version:'Version', env:'Env'
+    metrics:'Metrics', version:'Version', env:'Env', cacheTimer:'Cache Timer'
   };
 
   document.getElementById('color-grid').innerHTML = COLOR_SEGMENTS.map(key => {
@@ -1246,7 +1275,7 @@ const THEME_PALETTES = {
     block:{bg:'#1e2030',fg:'#bb9af7'}, today:{bg:'#1a1b26',fg:'#f7768e'},
     weekly:{bg:'#1a1b26',fg:'#2ac3de'}, tmux:{bg:'#414868',fg:'#c0caf5'},
     context:{bg:'#1a1b26',fg:'#7dcfff'}, metrics:{bg:'#1a1b26',fg:'#a9b1d6'},
-    version:{bg:'#1a1b26',fg:'#565f89'}, sessionId:{bg:'#1a1b26',fg:'#7aa2f7'}, env:{bg:'#1a1b26',fg:'#7aa2f7'},
+    version:{bg:'#1a1b26',fg:'#565f89'}, sessionId:{bg:'#1a1b26',fg:'#7aa2f7'}, env:{bg:'#1a1b26',fg:'#7aa2f7'}, cacheTimer:{bg:'#1f3a1f',fg:'#90ee90'},
   },
   light: {
     directory:{bg:'#c8d3f5',fg:'#2e3440'}, git:{bg:'#dfe4f2',fg:'#2d5a9e'},
@@ -1254,7 +1283,7 @@ const THEME_PALETTES = {
     block:{bg:'#e8d5f5',fg:'#4a1072'}, today:{bg:'#ffd6e0',fg:'#9d174d'},
     weekly:{bg:'#c1e1ec',fg:'#0a3d62'}, tmux:{bg:'#e8e8f0',fg:'#374151'},
     context:{bg:'#d0eeff',fg:'#1a3a5c'}, metrics:{bg:'#f0f0f0',fg:'#374151'},
-    version:{bg:'#e0e0e8',fg:'#6b7280'}, sessionId:{bg:'#d0eeff',fg:'#1a3a5c'}, env:{bg:'#d0eeff',fg:'#1a3a5c'},
+    version:{bg:'#e0e0e8',fg:'#6b7280'}, sessionId:{bg:'#d0eeff',fg:'#1a3a5c'}, env:{bg:'#d0eeff',fg:'#1a3a5c'}, cacheTimer:{bg:'#059669',fg:'#ffffff'},
   },
   nord: {
     directory:{bg:'#4c566a',fg:'#eceff4'}, git:{bg:'#3b4252',fg:'#88c0d0'},
@@ -1262,7 +1291,7 @@ const THEME_PALETTES = {
     block:{bg:'#4c566a',fg:'#b48ead'}, today:{bg:'#3b4252',fg:'#bf616a'},
     weekly:{bg:'#3b4252',fg:'#88c0d0'}, tmux:{bg:'#2e3440',fg:'#81a1c1'},
     context:{bg:'#2e3440',fg:'#8fbcbb'}, metrics:{bg:'#3b4252',fg:'#d8dee9'},
-    version:{bg:'#2e3440',fg:'#616e88'}, sessionId:{bg:'#3b4252',fg:'#88c0d0'}, env:{bg:'#3b4252',fg:'#88c0d0'},
+    version:{bg:'#2e3440',fg:'#616e88'}, sessionId:{bg:'#3b4252',fg:'#88c0d0'}, env:{bg:'#3b4252',fg:'#88c0d0'}, cacheTimer:{bg:'#3b4252',fg:'#a3be8c'},
   },
   'tokyo-night': {
     directory:{bg:'#3b4261',fg:'#a9b1d6'}, git:{bg:'#1a1b26',fg:'#7aa2f7'},
@@ -1270,7 +1299,7 @@ const THEME_PALETTES = {
     block:{bg:'#1e2030',fg:'#bb9af7'}, today:{bg:'#1a1b26',fg:'#f7768e'},
     weekly:{bg:'#1a1b26',fg:'#2ac3de'}, tmux:{bg:'#414868',fg:'#c0caf5'},
     context:{bg:'#1a1b26',fg:'#7dcfff'}, metrics:{bg:'#1a1b26',fg:'#a9b1d6'},
-    version:{bg:'#1a1b26',fg:'#565f89'}, sessionId:{bg:'#1a1b26',fg:'#7aa2f7'}, env:{bg:'#1a1b26',fg:'#7aa2f7'},
+    version:{bg:'#1a1b26',fg:'#565f89'}, sessionId:{bg:'#1a1b26',fg:'#7aa2f7'}, env:{bg:'#1a1b26',fg:'#7aa2f7'}, cacheTimer:{bg:'#1f2e2a',fg:'#9ece6a'},
   },
   'rose-pine': {
     directory:{bg:'#403d52',fg:'#e0def4'}, git:{bg:'#1f1d2e',fg:'#9ccfd8'},
@@ -1278,7 +1307,7 @@ const THEME_PALETTES = {
     block:{bg:'#393552',fg:'#c4a7e7'}, today:{bg:'#1f1d2e',fg:'#eb6f92'},
     weekly:{bg:'#1f1d2e',fg:'#9ccfd8'}, tmux:{bg:'#6e6a86',fg:'#e0def4'},
     context:{bg:'#1f1d2e',fg:'#ebbcba'}, metrics:{bg:'#26233a',fg:'#e0def4'},
-    version:{bg:'#1f1d2e',fg:'#6e6a86'}, sessionId:{bg:'#1f1d2e',fg:'#9ccfd8'}, env:{bg:'#1f1d2e',fg:'#9ccfd8'},
+    version:{bg:'#1f1d2e',fg:'#6e6a86'}, sessionId:{bg:'#1f1d2e',fg:'#9ccfd8'}, env:{bg:'#1f1d2e',fg:'#9ccfd8'}, cacheTimer:{bg:'#1f2d2e',fg:'#9ccfd8'},
   },
   gruvbox: {
     directory:{bg:'#665c54',fg:'#ebdbb2'}, git:{bg:'#3c3836',fg:'#83a598'},
@@ -1286,7 +1315,7 @@ const THEME_PALETTES = {
     block:{bg:'#504945',fg:'#d3869b'}, today:{bg:'#3c3836',fg:'#fb4934'},
     weekly:{bg:'#3c3836',fg:'#83a598'}, tmux:{bg:'#7c6f64',fg:'#282828'},
     context:{bg:'#3c3836',fg:'#8ec07c'}, metrics:{bg:'#504945',fg:'#ebdbb2'},
-    version:{bg:'#282828',fg:'#928374'}, sessionId:{bg:'#3c3836',fg:'#83a598'}, env:{bg:'#3c3836',fg:'#83a598'},
+    version:{bg:'#282828',fg:'#928374'}, sessionId:{bg:'#3c3836',fg:'#83a598'}, env:{bg:'#3c3836',fg:'#83a598'}, cacheTimer:{bg:'#3c3836',fg:'#b8bb26'},
   },
 };
 // Build a bar string for context display styles
@@ -1423,6 +1452,15 @@ function getSegLabel(seg) {
       const bar = isBar ? barStr(ds, 65) + ' ' : '🕐 ';
       if (seg.showPercentageOnly) return bar + pct;
       return bar + '45,000 (' + pct + ')';
+    }
+
+    case 'cacheTimer': {
+      const ctIcon = seg.showIcon !== false ? (seg.customIcon || '◴') + ' ' : '';
+      if (seg.displayMode === 'remaining') {
+        const ttl = seg.ttlSeconds || 3600;
+        return ctIcon + (ttl <= 300 ? '2:15' : '57:15');
+      }
+      return ctIcon + '2:45';
     }
 
     case 'metrics': {

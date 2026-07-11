@@ -121,3 +121,18 @@ export function formatTimeRemaining(totalMinutes: number): string {
   const minutes = totalMinutes % 60;
   return hours > 0 ? `${hours}h ${minutes}m left` : `${minutes}m left`;
 }
+
+export function formatCacheTimerElapsed(seconds: number): string {
+  if (seconds >= 3600) return "1h+";
+  if (seconds >= 300) return `${Math.floor(seconds / 60)}m`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export function formatCacheTimerRemaining(remainingSeconds: number): string {
+  if (remainingSeconds <= 0) return "cold";
+  const m = Math.floor(remainingSeconds / 60);
+  const s = Math.floor(remainingSeconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}

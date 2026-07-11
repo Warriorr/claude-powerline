@@ -10,6 +10,8 @@ import {
   formatModelName,
   formatResponseTime,
   formatTimeRemaining,
+  formatCacheTimerElapsed,
+  formatCacheTimerRemaining,
   abbreviateFishStyle,
 } from "../utils/formatters";
 import { getBudgetStatus } from "../utils/budget";
@@ -24,7 +26,9 @@ export function buildTitleBar(
   const rawName = data.hookData.model?.display_name || "Claude";
   let modelName = formatModelName(rawName).toLowerCase();
 
-  const modelConfig = config?.display?.lines?.[0]?.segments?.model as ModelSegmentConfig | undefined;
+  const modelConfig = config?.display?.lines?.[0]?.segments?.model as
+    | ModelSegmentConfig
+    | undefined;
 
   if (modelConfig?.showEffort && data.hookData.effort?.level) {
     modelName += ` [${data.hookData.effort.level}]`;
@@ -35,7 +39,8 @@ export function buildTitleBar(
   }
 
   if (modelConfig?.showSpeed && data.speed) {
-    const hide = modelConfig.showSpeedOnlyNonStandard && data.speed === "standard";
+    const hide =
+      modelConfig.showSpeedOnlyNonStandard && data.speed === "standard";
     if (!hide) {
       modelName += ` [${data.speed}]`;
     }
@@ -242,6 +247,11 @@ export function collectFooterParts(
       ),
     );
   }
+  const cacheTimerPart = formatCacheTimerPart(data, sym, config, reset, colors);
+  if (cacheTimerPart) {
+    parts.push(cacheTimerPart);
+  }
+
   if (data.tmuxSessionId) {
     parts.push(colorize(`tmux:${data.tmuxSessionId}`, colors.tmuxFg, reset));
   }
@@ -380,4 +390,41 @@ export function formatTodaySegment(
   }
 
   return text;
+}
+
+export function formatCacheTimerPart(
+  data: TuiData,
+  sym: SymbolSet,
+  config: PowerlineConfig,
+  reset: string,
+  colors: PowerlineColors,
+): string | null {
+  const cacheTimerConfig = config.display.lines
+    .map((line) => line.segments.cacheTimer)
+    .find((c) => c?.enabled);
+  if (!cacheTimerConfig || !data.cacheTimerInfo) return null;
+
+  const info = data.cacheTimerInfo;
+  let value: string;
+  let fg = colors.cacheTimerFg;
+
+  if (cacheTimerConfig.displayMode === "remaining") {
+    const ttl = cacheTimerConfig.ttlSeconds ?? info.detectedTtlSeconds ?? 3600;
+    const remaining = Math.max(0, ttl - info.elapsedSeconds);
+    value = formatCacheTimerRemaining(remaining);
+    if (remaining < 60) {
+      fg = colors.contextCriticalFg;
+    } else if (remaining < 300) {
+      fg = colors.contextWarningFg;
+    }
+  } else {
+    value = formatCacheTimerElapsed(info.elapsedSeconds);
+    if (info.elapsedSeconds >= 300) {
+      fg = colors.contextCriticalFg;
+    } else if (info.elapsedSeconds >= 180) {
+      fg = colors.contextWarningFg;
+    }
+  }
+
+  return colorize(`${sym.cache_timer} ${value}`, fg, reset);
 }

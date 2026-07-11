@@ -1,11 +1,16 @@
 import { BlockProvider } from "../src/segments/block";
 import { TodayProvider } from "../src/segments/today";
 import { SegmentRenderer } from "../src/segments/renderer";
+import { CacheTimerProvider } from "../src/segments/cacheTimer";
+import {
+  formatCacheTimerElapsed,
+  formatCacheTimerRemaining,
+} from "../src/utils/formatters";
 import {
   loadEntriesFromProjects,
   type ClaudeHookData,
 } from "../src/utils/claude";
-import { mkdirSync, rmSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -140,7 +145,7 @@ describe("Segment Time Logic", () => {
       blockEnd.setHours((blockNumber + 1) * 5, 0, 0, 0);
       const expectedRemaining = Math.max(
         0,
-        Math.round((blockEnd.getTime() - now.getTime()) / (1000 * 60))
+        Math.round((blockEnd.getTime() - now.getTime()) / (1000 * 60)),
       );
 
       expect(blockInfo.timeRemaining).toBe(expectedRemaining);
@@ -430,12 +435,18 @@ describe("Segment Time Logic", () => {
     });
 
     it("should render session id with label when showIdLabel is true", () => {
-      const result = renderer.renderSessionId(sessionId, colors, { enabled: true, showIdLabel: true });
+      const result = renderer.renderSessionId(sessionId, colors, {
+        enabled: true,
+        showIdLabel: true,
+      });
       expect(result.text).toBe(`⌗ ${sessionId}`);
     });
 
     it("should render session id without label when showIdLabel is false", () => {
-      const result = renderer.renderSessionId(sessionId, colors, { enabled: true, showIdLabel: false });
+      const result = renderer.renderSessionId(sessionId, colors, {
+        enabled: true,
+        showIdLabel: false,
+      });
       expect(result.text).toBe(sessionId);
     });
 
@@ -487,17 +498,27 @@ describe("Segment Time Logic", () => {
     });
 
     it("should use bar_filled/bar_empty symbols for 'bar' style and BAR_STYLES chars for custom styles", () => {
-      const bar = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: "bar" });
+      const bar = renderer.renderContext(mkContext(50), colors, {
+        enabled: true,
+        displayStyle: "bar",
+      });
       expect(bar!.text).toContain("▪");
       expect(bar!.text).toContain("▫");
 
-      const blocks = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: "blocks" });
+      const blocks = renderer.renderContext(mkContext(50), colors, {
+        enabled: true,
+        displayStyle: "blocks",
+      });
       expect(blocks!.text).toContain("█");
       expect(blocks!.text).toContain("░");
     });
 
     it("should render all standard styles with 10-char bars and correct fill/empty", () => {
-      const styles: Array<{ name: "blocks" | "squares" | "dots" | "line" | "filled" | "geometric"; filled: string; empty: string }> = [
+      const styles: Array<{
+        name: "blocks" | "squares" | "dots" | "line" | "filled" | "geometric";
+        filled: string;
+        empty: string;
+      }> = [
         { name: "blocks", filled: "█", empty: "░" },
         { name: "squares", filled: "◼", empty: "◻" },
         { name: "dots", filled: "●", empty: "○" },
@@ -507,7 +528,10 @@ describe("Segment Time Logic", () => {
       ];
 
       for (const { name, filled, empty } of styles) {
-        const result = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: name });
+        const result = renderer.renderContext(mkContext(50), colors, {
+          enabled: true,
+          displayStyle: name,
+        });
         const barPart = result!.text.split(" ")[0]!;
         expect(barPart).toHaveLength(10);
         expect(barPart).toContain(filled);
@@ -516,53 +540,382 @@ describe("Segment Time Logic", () => {
     });
 
     it("should handle capped style edge cases: 0%, mid, and 100%", () => {
-      const at0 = renderer.renderContext(mkContext(0), colors, { enabled: true, displayStyle: "capped" });
+      const at0 = renderer.renderContext(mkContext(0), colors, {
+        enabled: true,
+        displayStyle: "capped",
+      });
       expect(at0!.text).toMatch(/^╸┄{9}/);
 
-      const at50 = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: "capped" });
+      const at50 = renderer.renderContext(mkContext(50), colors, {
+        enabled: true,
+        displayStyle: "capped",
+      });
       expect(at50!.text).toContain("━");
       expect(at50!.text).toContain("╸");
       expect(at50!.text).toContain("┄");
 
-      const at100 = renderer.renderContext(mkContext(100), colors, { enabled: true, displayStyle: "capped" });
+      const at100 = renderer.renderContext(mkContext(100), colors, {
+        enabled: true,
+        displayStyle: "capped",
+      });
       expect(at100!.text).toMatch(/^━{10}/);
     });
 
     it("should render ball style with exactly one position marker", () => {
-      const result = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: "ball" });
+      const result = renderer.renderContext(mkContext(50), colors, {
+        enabled: true,
+        displayStyle: "ball",
+      });
       const barPart = result!.text.split(" ")[0]!;
       expect(barPart).toHaveLength(10);
       expect((barPart.match(/●/g) || []).length).toBe(1);
     });
 
     it("should render empty bars on null context and text fallback for text style", () => {
-      const barNull = renderer.renderContext(null, colors, { enabled: true, displayStyle: "squares" });
+      const barNull = renderer.renderContext(null, colors, {
+        enabled: true,
+        displayStyle: "squares",
+      });
       expect(barNull!.text).toContain("◻".repeat(10));
       expect(barNull!.text).toContain("0%");
 
-      const textNull = renderer.renderContext(null, colors, { enabled: true, displayStyle: "text" });
+      const textNull = renderer.renderContext(null, colors, {
+        enabled: true,
+        displayStyle: "text",
+      });
       expect(textNull!.text).toContain("◔");
     });
 
     it("should apply warning/critical colors based on context left percentage", () => {
-      const warning = renderer.renderContext(mkContext(70), colors, { enabled: true, displayStyle: "blocks" });
+      const warning = renderer.renderContext(mkContext(70), colors, {
+        enabled: true,
+        displayStyle: "blocks",
+      });
       expect(warning!.bgColor).toBe(colors.contextWarningBg);
 
-      const critical = renderer.renderContext(mkContext(90), colors, { enabled: true, displayStyle: "blocks" });
+      const critical = renderer.renderContext(mkContext(90), colors, {
+        enabled: true,
+        displayStyle: "blocks",
+      });
       expect(critical!.bgColor).toBe(colors.contextCriticalBg);
 
-      const normal = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: "blocks" });
+      const normal = renderer.renderContext(mkContext(50), colors, {
+        enabled: true,
+        displayStyle: "blocks",
+      });
       expect(normal!.bgColor).toBe(colors.contextBg);
     });
 
     it("should toggle token count display with showPercentageOnly", () => {
-      const withTokens = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: "blocks" });
+      const withTokens = renderer.renderContext(mkContext(50), colors, {
+        enabled: true,
+        displayStyle: "blocks",
+      });
       expect(withTokens!.text).toContain((100000).toLocaleString());
       expect(withTokens!.text).toContain("50%");
 
-      const pctOnly = renderer.renderContext(mkContext(50), colors, { enabled: true, displayStyle: "blocks", showPercentageOnly: true });
+      const pctOnly = renderer.renderContext(mkContext(50), colors, {
+        enabled: true,
+        displayStyle: "blocks",
+        showPercentageOnly: true,
+      });
       expect(pctOnly!.text).toContain("50%");
       expect(pctOnly!.text).not.toContain((100000).toLocaleString());
     });
+  });
+});
+
+describe("CacheTimer Segment", () => {
+  let cacheTempDir: string;
+
+  const rendererConfig = {
+    theme: "dark",
+    display: { style: "minimal" },
+  } as any;
+  const symbols = { cache_timer: "◴" } as any;
+  const colors = {
+    cacheTimerBg: "#1f3a1f",
+    cacheTimerFg: "#90ee90",
+    contextWarningBg: "#92400e",
+    contextWarningFg: "#fbbf24",
+    contextCriticalBg: "#991b1b",
+    contextCriticalFg: "#fca5a5",
+  } as any;
+
+  beforeEach(() => {
+    cacheTempDir = join(tmpdir(), `powerline-cache-timer-${Date.now()}`);
+    mkdirSync(cacheTempDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(cacheTempDir, { recursive: true, force: true });
+  });
+
+  it("formats elapsed seconds across all thresholds", () => {
+    expect(formatCacheTimerElapsed(0)).toBe("0:00");
+    expect(formatCacheTimerElapsed(3)).toBe("0:03");
+    expect(formatCacheTimerElapsed(222)).toBe("3:42");
+    expect(formatCacheTimerElapsed(299)).toBe("4:59");
+    expect(formatCacheTimerElapsed(300)).toBe("5m");
+    expect(formatCacheTimerElapsed(1050)).toBe("17m");
+    expect(formatCacheTimerElapsed(3599)).toBe("59m");
+    expect(formatCacheTimerElapsed(3600)).toBe("1h+");
+    expect(formatCacheTimerElapsed(86400)).toBe("1h+");
+  });
+
+  it("formats remaining seconds against TTL with cold fallback", () => {
+    expect(formatCacheTimerRemaining(3600)).toBe("60:00");
+    expect(formatCacheTimerRemaining(3591)).toBe("59:51");
+    expect(formatCacheTimerRemaining(125)).toBe("2:05");
+    expect(formatCacheTimerRemaining(59)).toBe("0:59");
+    expect(formatCacheTimerRemaining(0)).toBe("cold");
+    expect(formatCacheTimerRemaining(-30)).toBe("cold");
+  });
+
+  it("escalates colors at 3m and 5m boundaries", () => {
+    const renderer = new SegmentRenderer(rendererConfig, symbols);
+
+    const healthy0 = renderer.renderCacheTimer({ elapsedSeconds: 0 }, colors);
+    expect(healthy0.bgColor).toBe(colors.cacheTimerBg);
+    expect(healthy0.fgColor).toBe(colors.cacheTimerFg);
+
+    const healthy179 = renderer.renderCacheTimer(
+      { elapsedSeconds: 179 },
+      colors,
+    );
+    expect(healthy179.bgColor).toBe(colors.cacheTimerBg);
+
+    const warn180 = renderer.renderCacheTimer({ elapsedSeconds: 180 }, colors);
+    expect(warn180.bgColor).toBe(colors.contextWarningBg);
+    expect(warn180.fgColor).toBe(colors.contextWarningFg);
+
+    const warn299 = renderer.renderCacheTimer({ elapsedSeconds: 299 }, colors);
+    expect(warn299.bgColor).toBe(colors.contextWarningBg);
+
+    const critical300 = renderer.renderCacheTimer(
+      { elapsedSeconds: 300 },
+      colors,
+    );
+    expect(critical300.bgColor).toBe(colors.contextCriticalBg);
+    expect(critical300.fgColor).toBe(colors.contextCriticalFg);
+
+    const critical3600 = renderer.renderCacheTimer(
+      { elapsedSeconds: 3600 },
+      colors,
+    );
+    expect(critical3600.bgColor).toBe(colors.contextCriticalBg);
+    expect(critical3600.text).toContain("1h+");
+  });
+
+  it("renders remaining mode with critical/warn thresholds and TTL override", () => {
+    const renderer = new SegmentRenderer(rendererConfig, symbols);
+
+    const fresh = renderer.renderCacheTimer({ elapsedSeconds: 10 }, colors, {
+      enabled: true,
+      displayMode: "remaining",
+    });
+    expect(fresh.text).toContain("59:50");
+    expect(fresh.bgColor).toBe(colors.cacheTimerBg);
+
+    const warn = renderer.renderCacheTimer({ elapsedSeconds: 3500 }, colors, {
+      enabled: true,
+      displayMode: "remaining",
+    });
+    expect(warn.bgColor).toBe(colors.contextWarningBg);
+
+    const critical = renderer.renderCacheTimer(
+      { elapsedSeconds: 3580 },
+      colors,
+      { enabled: true, displayMode: "remaining" },
+    );
+    expect(critical.bgColor).toBe(colors.contextCriticalBg);
+
+    const cold = renderer.renderCacheTimer({ elapsedSeconds: 7200 }, colors, {
+      enabled: true,
+      displayMode: "remaining",
+    });
+    expect(cold.text).toContain("cold");
+    expect(cold.bgColor).toBe(colors.contextCriticalBg);
+
+    const customTtl = renderer.renderCacheTimer(
+      { elapsedSeconds: 60 },
+      colors,
+      { enabled: true, displayMode: "remaining", ttlSeconds: 300 },
+    );
+    expect(customTtl.text).toContain("4:00");
+    expect(customTtl.bgColor).toBe(colors.contextWarningBg);
+  });
+
+  it("renders remaining mode using detected TTL when no explicit ttlSeconds is set", () => {
+    const renderer = new SegmentRenderer(rendererConfig, symbols);
+
+    const detected1h = renderer.renderCacheTimer(
+      { elapsedSeconds: 30, detectedTtlSeconds: 3600 },
+      colors,
+      { enabled: true, displayMode: "remaining" },
+    );
+    expect(detected1h.text).toContain("59:30");
+
+    const detected5m = renderer.renderCacheTimer(
+      { elapsedSeconds: 30, detectedTtlSeconds: 300 },
+      colors,
+      { enabled: true, displayMode: "remaining" },
+    );
+    expect(detected5m.text).toContain("4:30");
+
+    const explicitOverride = renderer.renderCacheTimer(
+      { elapsedSeconds: 120, detectedTtlSeconds: 3600 },
+      colors,
+      { enabled: true, displayMode: "remaining", ttlSeconds: 60 },
+    );
+    expect(explicitOverride.text).toContain("cold");
+    expect(explicitOverride.bgColor).toBe(colors.contextCriticalBg);
+  });
+
+  it("anchors elapsed time to the last user entry in the transcript", async () => {
+    const transcriptPath = join(cacheTempDir, "transcript.jsonl");
+    const now = Date.now();
+    const userTs = new Date(now - 120_000).toISOString();
+    const content = [
+      JSON.stringify({
+        type: "user",
+        message: { role: "user" },
+        timestamp: new Date(now - 600_000).toISOString(),
+      }),
+      JSON.stringify({
+        type: "user",
+        message: { role: "user" },
+        timestamp: userTs,
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: { role: "assistant" },
+        timestamp: new Date(now - 15_000).toISOString(),
+      }),
+    ].join("\n");
+    writeFileSync(transcriptPath, content);
+
+    const provider = new CacheTimerProvider();
+    const result = await provider.getCacheTimerInfo({
+      transcript_path: transcriptPath,
+    } as ClaudeHookData);
+
+    expect(result).not.toBeNull();
+    expect(result!.elapsedSeconds).toBeGreaterThanOrEqual(119);
+    expect(result!.elapsedSeconds).toBeLessThanOrEqual(125);
+  });
+
+  it("autodetects TTL from assistant cache_creation usage tokens", async () => {
+    const transcriptPath = join(cacheTempDir, "transcript-ttl-1h.jsonl");
+    const now = Date.now();
+    const content = [
+      JSON.stringify({
+        type: "user",
+        message: { role: "user" },
+        timestamp: new Date(now - 60_000).toISOString(),
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          usage: {
+            cache_creation: {
+              ephemeral_1h_input_tokens: 48153,
+              ephemeral_5m_input_tokens: 0,
+            },
+          },
+        },
+        timestamp: new Date(now - 30_000).toISOString(),
+      }),
+    ].join("\n");
+    writeFileSync(transcriptPath, content);
+
+    const provider = new CacheTimerProvider();
+    const result = await provider.getCacheTimerInfo({
+      transcript_path: transcriptPath,
+    } as ClaudeHookData);
+
+    expect(result).not.toBeNull();
+    expect(result!.detectedTtlSeconds).toBe(3600);
+  });
+
+  it("autodetects 5-minute TTL when only ephemeral_5m_input_tokens is set", async () => {
+    const transcriptPath = join(cacheTempDir, "transcript-ttl-5m.jsonl");
+    const now = Date.now();
+    const content = [
+      JSON.stringify({
+        type: "user",
+        message: { role: "user" },
+        timestamp: new Date(now - 60_000).toISOString(),
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          usage: {
+            cache_creation: {
+              ephemeral_1h_input_tokens: 0,
+              ephemeral_5m_input_tokens: 1200,
+            },
+          },
+        },
+        timestamp: new Date(now - 30_000).toISOString(),
+      }),
+    ].join("\n");
+    writeFileSync(transcriptPath, content);
+
+    const provider = new CacheTimerProvider();
+    const result = await provider.getCacheTimerInfo({
+      transcript_path: transcriptPath,
+    } as ClaudeHookData);
+
+    expect(result).not.toBeNull();
+    expect(result!.detectedTtlSeconds).toBe(300);
+  });
+
+  it("omits detectedTtlSeconds when no cache_creation usage is recorded", async () => {
+    const transcriptPath = join(cacheTempDir, "transcript-no-usage.jsonl");
+    const now = Date.now();
+    const content = [
+      JSON.stringify({
+        type: "user",
+        message: { role: "user" },
+        timestamp: new Date(now - 60_000).toISOString(),
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: { role: "assistant" },
+        timestamp: new Date(now - 30_000).toISOString(),
+      }),
+    ].join("\n");
+    writeFileSync(transcriptPath, content);
+
+    const provider = new CacheTimerProvider();
+    const result = await provider.getCacheTimerInfo({
+      transcript_path: transcriptPath,
+    } as ClaudeHookData);
+
+    expect(result).not.toBeNull();
+    expect(result!.detectedTtlSeconds).toBeUndefined();
+  });
+
+  it("falls back to file mtime when the transcript has no user timestamps", async () => {
+    const transcriptPath = join(cacheTempDir, "transcript-empty.jsonl");
+    writeFileSync(transcriptPath, "not-json\n");
+
+    const provider = new CacheTimerProvider();
+    const result = await provider.getCacheTimerInfo({
+      transcript_path: transcriptPath,
+    } as ClaudeHookData);
+
+    expect(result).not.toBeNull();
+    expect(result!.elapsedSeconds).toBeGreaterThanOrEqual(0);
+    expect(result!.elapsedSeconds).toBeLessThanOrEqual(5);
+  });
+
+  it("returns null when there is no transcript path", async () => {
+    const provider = new CacheTimerProvider();
+    const result = await provider.getCacheTimerInfo({} as ClaudeHookData);
+    expect(result).toBeNull();
   });
 });

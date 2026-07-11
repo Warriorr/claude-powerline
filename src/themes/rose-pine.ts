@@ -1,20 +1,21 @@
 import type { ColorTheme } from "./index";
 
 export const rosePineTheme: ColorTheme = {
-  directory: { bg: "#403d52", fg: "#c4a7e7" },  // highlight_med
-  git: { bg: "#2d2b40", fg: "#9ccfd8" },          // between surface and overlay
-  model: { bg: "#26233a", fg: "#ebbcba" },         // overlay (anchors the sequence)
-  session: { bg: "#403d52", fg: "#f6c177" },       // highlight_med
-  block: { bg: "#4a475e", fg: "#eb6f92" },         // between highlight_med and highlight_high
-  today: { bg: "#353246", fg: "#9ccfd8" },         // between overlay and highlight_med
-  weekly: { bg: "#302e43", fg: "#f6c177" },        // slightly above surface
-  tmux: { bg: "#403d52", fg: "#908caa" },          // highlight_med
-  context: { bg: "#524f67", fg: "#e0def4" },       // highlight_high
+  directory: { bg: "#403d52", fg: "#c4a7e7" }, // highlight_med
+  git: { bg: "#2d2b40", fg: "#9ccfd8" }, // between surface and overlay
+  model: { bg: "#26233a", fg: "#ebbcba" }, // overlay (anchors the sequence)
+  session: { bg: "#403d52", fg: "#f6c177" }, // highlight_med
+  block: { bg: "#4a475e", fg: "#eb6f92" }, // between highlight_med and highlight_high
+  today: { bg: "#353246", fg: "#9ccfd8" }, // between overlay and highlight_med
+  weekly: { bg: "#302e43", fg: "#f6c177" }, // slightly above surface
+  tmux: { bg: "#403d52", fg: "#908caa" }, // highlight_med
+  context: { bg: "#524f67", fg: "#e0def4" }, // highlight_high
   contextWarning: { bg: "#f6c177", fg: "#191724" },
   contextCritical: { bg: "#eb6f92", fg: "#191724" },
-  metrics: { bg: "#5d5a72", fg: "#e0def4" },       // above highlight_high
-  version: { bg: "#4a475e", fg: "#c4a7e7" },       // between highlight_med and highlight_high
+  metrics: { bg: "#5d5a72", fg: "#e0def4" }, // above highlight_high
+  version: { bg: "#4a475e", fg: "#c4a7e7" }, // between highlight_med and highlight_high
   env: { bg: "#302e43", fg: "#eb6f92" },
+  cacheTimer: { bg: "#1f2d2e", fg: "#9ccfd8" },
 };
 
 export const rosePineAnsi256Theme: ColorTheme = {
@@ -32,6 +33,7 @@ export const rosePineAnsi256Theme: ColorTheme = {
   metrics: { bg: "#767676", fg: "#e4e4e4" },
   version: { bg: "#4e4e4e", fg: "#d787d7" },
   env: { bg: "#303030", fg: "#ff5f87" },
+  cacheTimer: { bg: "#303030", fg: "#87d7d7" },
 };
 
 export const rosePineAnsiTheme: ColorTheme = {
@@ -49,4 +51,5 @@ export const rosePineAnsiTheme: ColorTheme = {
   metrics: { bg: "#a8a8a8", fg: "#000000" },
   version: { bg: "#666666", fg: "#ff87ff" },
   env: { bg: "#444444", fg: "#ff5f87" },
+  cacheTimer: { bg: "#444444", fg: "#00d7d7" },
 };

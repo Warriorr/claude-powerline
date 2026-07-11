@@ -15,6 +15,7 @@ export const darkTheme: ColorTheme = {
   metrics: { bg: "#374151", fg: "#d1d5db" },
   version: { bg: "#3a3a4a", fg: "#b8b8d0" },
   env: { bg: "#2d2d3d", fg: "#d0a0d0" },
+  cacheTimer: { bg: "#1f3a1f", fg: "#90ee90" },
 };
 
 export const darkAnsi256Theme: ColorTheme = {
@@ -32,6 +33,7 @@ export const darkAnsi256Theme: ColorTheme = {
   metrics: { bg: "#4e4e4e", fg: "#d0d0d0" },
   version: { bg: "#444444", fg: "#d7afff" },
   env: { bg: "#3a3a3a", fg: "#d787d7" },
+  cacheTimer: { bg: "#1c2e1c", fg: "#87ff87" },
 };
 
 export const darkAnsiTheme: ColorTheme = {
@@ -49,4 +51,5 @@ export const darkAnsiTheme: ColorTheme = {
   metrics: { bg: "#666666", fg: "#ffffff" },
   version: { bg: "#585858", fg: "#af87ff" },
   env: { bg: "#444444", fg: "#ff87ff" },
+  cacheTimer: { bg: "#2f4f2f", fg: "#00ff00" },
 };

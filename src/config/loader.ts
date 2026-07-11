@@ -4,7 +4,6 @@ import os from "node:os";
 import { DEFAULT_CONFIG } from "./defaults";
 import type { ColorTheme } from "../themes";
 import type {
-  SegmentConfig,
   DirectorySegmentConfig,
   GitSegmentConfig,
   UsageSegmentConfig,
@@ -18,6 +17,7 @@ import type {
   SessionIdSegmentConfig,
   EnvSegmentConfig,
   ModelSegmentConfig,
+  CacheTimerSegmentConfig,
 } from "../segments/renderer";
 
 export interface LineConfig {
@@ -35,6 +35,7 @@ export interface LineConfig {
     version?: VersionSegmentConfig;
     sessionId?: SessionIdSegmentConfig;
     env?: EnvSegmentConfig;
+    cacheTimer?: CacheTimerSegmentConfig;
   };
 }
 

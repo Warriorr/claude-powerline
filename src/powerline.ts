@@ -35,10 +35,12 @@ import {
   SessionIdSegmentConfig,
   EnvSegmentConfig,
   ModelSegmentConfig,
+  CacheTimerSegmentConfig,
 } from "./segments";
 import { BlockProvider, BlockInfo } from "./segments/block";
 import { TodayProvider, TodayInfo } from "./segments/today";
 import { WeeklyProvider, WeeklyInfo } from "./segments/weekly";
+import { CacheTimerProvider, CacheTimerInfo } from "./segments/cacheTimer";
 import {
   SYMBOLS,
   TEXT_SYMBOLS,
@@ -67,6 +69,7 @@ export class PowerlineRenderer {
   private _gitService?: GitService;
   private _tmuxService?: TmuxService;
   private _metricsProvider?: MetricsProvider;
+  private _cacheTimerProvider?: CacheTimerProvider;
   private _segmentRenderer?: SegmentRenderer;
   private currentSpeed: string | null = null;
 
@@ -130,6 +133,13 @@ export class PowerlineRenderer {
     return this._metricsProvider;
   }
 
+  private get cacheTimerProvider(): CacheTimerProvider {
+    if (!this._cacheTimerProvider) {
+      this._cacheTimerProvider = new CacheTimerProvider();
+    }
+    return this._cacheTimerProvider;
+  }
+
   private get segmentRenderer(): SegmentRenderer {
     if (!this._segmentRenderer) {
       this._segmentRenderer = new SegmentRenderer(this.config, this.symbols);
@@ -149,7 +159,9 @@ export class PowerlineRenderer {
       .map((line) => line.segments.model)
       .find((c) => c?.enabled) as ModelSegmentConfig | undefined;
     if (modelConfig?.showSpeed && hookData.transcript_path) {
-      this.currentSpeed = await getSpeedFromTranscript(hookData.transcript_path);
+      this.currentSpeed = await getSpeedFromTranscript(
+        hookData.transcript_path,
+      );
     }
 
     if (this.config.display.style === "tui") {
@@ -161,7 +173,9 @@ export class PowerlineRenderer {
       : null;
 
     const blockInfo = this.needsSegmentInfo("block")
-      ? await this.blockProvider.getActiveBlockInfo(hookData.rate_limits?.five_hour)
+      ? await this.blockProvider.getActiveBlockInfo(
+          hookData.rate_limits?.five_hour,
+        )
       : null;
 
     const todayInfo = this.needsSegmentInfo("today")
@@ -184,6 +198,10 @@ export class PowerlineRenderer {
       ? await this.metricsProvider.getMetricsInfo(hookData.session_id, hookData)
       : null;
 
+    const cacheTimerInfo = this.needsSegmentInfo("cacheTimer")
+      ? await this.cacheTimerProvider.getCacheTimerInfo(hookData)
+      : null;
+
     if (this.config.display.autoWrap) {
       return this.generateAutoWrapStatusline(
         hookData,
@@ -193,6 +211,7 @@ export class PowerlineRenderer {
         weeklyInfo,
         contextInfo,
         metricsInfo,
+        cacheTimerInfo,
       );
     }
 
@@ -207,6 +226,7 @@ export class PowerlineRenderer {
           weeklyInfo,
           contextInfo,
           metricsInfo,
+          cacheTimerInfo,
         ),
       ),
     );
@@ -222,6 +242,7 @@ export class PowerlineRenderer {
     weeklyInfo: WeeklyInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
+    cacheTimerInfo: CacheTimerInfo | null,
   ): Promise<string> {
     const colors = this.getThemeColors();
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
@@ -251,6 +272,7 @@ export class PowerlineRenderer {
           weeklyInfo,
           contextInfo,
           metricsInfo,
+          cacheTimerInfo,
           colors,
           currentDir,
         );
@@ -340,6 +362,7 @@ export class PowerlineRenderer {
         hookData.workspace?.project_dir,
       ),
       this.tmuxService.getSessionId(),
+      this.cacheTimerProvider.getCacheTimerInfo(hookData),
     ]);
     const val = <T>(r: PromiseSettledResult<T>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -351,6 +374,7 @@ export class PowerlineRenderer {
       metricsInfo,
       gitInfo,
       tmuxSessionId,
+      cacheTimerInfo,
     ] = [
       val(results[0]!),
       val(results[1]!),
@@ -359,6 +383,7 @@ export class PowerlineRenderer {
       val(results[4]!),
       val(results[5]!),
       val(results[6]!),
+      val(results[7]!),
     ] as const;
 
     const tuiData: TuiData = {
@@ -369,6 +394,7 @@ export class PowerlineRenderer {
       contextInfo,
       metricsInfo,
       gitInfo,
+      cacheTimerInfo,
       tmuxSessionId,
       speed: this.currentSpeed,
       colors,
@@ -441,6 +467,7 @@ export class PowerlineRenderer {
     weeklyInfo: WeeklyInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
+    cacheTimerInfo: CacheTimerInfo | null,
   ): Promise<string> {
     const colors = this.getThemeColors();
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
@@ -463,6 +490,7 @@ export class PowerlineRenderer {
         weeklyInfo,
         contextInfo,
         metricsInfo,
+        cacheTimerInfo,
         colors,
         currentDir,
       );
@@ -489,6 +517,7 @@ export class PowerlineRenderer {
     weeklyInfo: WeeklyInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
+    cacheTimerInfo: CacheTimerInfo | null,
     colors: PowerlineColors,
     currentDir: string,
   ) {
@@ -500,7 +529,12 @@ export class PowerlineRenderer {
       );
     }
     if (segment.type === "model") {
-      return this.segmentRenderer.renderModel(hookData, colors, segment.config as ModelSegmentConfig, this.currentSpeed);
+      return this.segmentRenderer.renderModel(
+        hookData,
+        colors,
+        segment.config as ModelSegmentConfig,
+        this.currentSpeed,
+      );
     }
 
     if (segment.type === "git") {
@@ -587,6 +621,15 @@ export class PowerlineRenderer {
       return this.segmentRenderer.renderEnv(
         colors,
         segment.config as EnvSegmentConfig,
+      );
+    }
+
+    if (segment.type === "cacheTimer") {
+      if (!cacheTimerInfo) return null;
+      return this.segmentRenderer.renderCacheTimer(
+        cacheTimerInfo,
+        colors,
+        segment.config as CacheTimerSegmentConfig,
       );
     }
 
@@ -739,6 +782,7 @@ export class PowerlineRenderer {
       bar_empty: symbolSet.bar_empty,
       env: symbolSet.env,
       session_id: symbolSet.session_id,
+      cache_timer: symbolSet.cache_timer,
     };
   }
 
@@ -783,8 +827,10 @@ export class PowerlineRenderer {
       };
 
       // Use 256-specific overrides when available and in ansi256 mode
-      const bgHex = colorSupport === "ansi256" && colors.bg256 ? colors.bg256 : colors.bg;
-      const baseFgHex = colorSupport === "ansi256" && colors.fg256 ? colors.fg256 : colors.fg;
+      const bgHex =
+        colorSupport === "ansi256" && colors.bg256 ? colors.bg256 : colors.bg;
+      const baseFgHex =
+        colorSupport === "ansi256" && colors.fg256 ? colors.fg256 : colors.fg;
 
       let fgHex = baseFgHex;
       if (isTui && hexColorDistance(fgHex, terminalRef) < 60) {
@@ -828,6 +874,7 @@ export class PowerlineRenderer {
     const metrics = getSegmentColors("metrics");
     const version = getSegmentColors("version");
     const env = getSegmentColors("env");
+    const cacheTimer = getSegmentColors("cacheTimer");
 
     return {
       reset: colorSupport === "none" ? "" : RESET_CODE,
@@ -859,6 +906,8 @@ export class PowerlineRenderer {
       versionFg: version.fg,
       envBg: env.bg,
       envFg: env.fg,
+      cacheTimerBg: cacheTimer.bg,
+      cacheTimerFg: cacheTimer.fg,
     };
   }
 
@@ -882,6 +931,8 @@ export class PowerlineRenderer {
         return colors.todayBg;
       case "weekly":
         return colors.weeklyBg;
+      case "cacheTimer":
+        return colors.cacheTimerBg;
       case "tmux":
         return colors.tmuxBg;
       case "context":

@@ -3,6 +3,7 @@ import type { ClaudeHookData } from "../utils/claude";
 import type { PowerlineColors } from "../themes";
 import type { PowerlineConfig } from "../config/loader";
 import type { BlockInfo } from "./block";
+import type { CacheTimerInfo } from "./cacheTimer";
 import { formatModelName, abbreviateFishStyle } from "../utils/formatters";
 
 export interface SegmentConfig {
@@ -121,6 +122,13 @@ export interface ModelSegmentConfig extends SegmentConfig {
   showSpeedOnlyNonStandard?: boolean;
 }
 
+export interface CacheTimerSegmentConfig extends SegmentConfig {
+  displayMode?: "elapsed" | "remaining";
+  ttlSeconds?: number;
+  showIcon?: boolean;
+  customIcon?: string;
+}
+
 export type AnySegmentConfig =
   | SegmentConfig
   | DirectorySegmentConfig
@@ -135,7 +143,8 @@ export type AnySegmentConfig =
   | VersionSegmentConfig
   | SessionIdSegmentConfig
   | EnvSegmentConfig
-  | ModelSegmentConfig;
+  | ModelSegmentConfig
+  | CacheTimerSegmentConfig;
 
 import {
   formatCost,
@@ -143,6 +152,8 @@ import {
   formatTokenBreakdown,
   formatTimeSince,
   formatDuration,
+  formatCacheTimerElapsed,
+  formatCacheTimerRemaining,
 } from "../utils/formatters";
 import { getBudgetStatus } from "../utils/budget";
 import type {
@@ -188,6 +199,7 @@ export interface PowerlineSymbols {
   bar_empty: string;
   env: string;
   session_id: string;
+  cache_timer: string;
 }
 
 export interface SegmentData {
@@ -355,7 +367,12 @@ export class SegmentRenderer {
     };
   }
 
-  renderModel(hookData: ClaudeHookData, colors: PowerlineColors, config?: ModelSegmentConfig, speed?: string | null): SegmentData {
+  renderModel(
+    hookData: ClaudeHookData,
+    colors: PowerlineColors,
+    config?: ModelSegmentConfig,
+    speed?: string | null,
+  ): SegmentData {
     const rawName = hookData.model?.display_name || "Claude";
     const modelName = formatModelName(rawName);
 
@@ -779,10 +796,19 @@ export class SegmentRenderer {
 
         if (config?.showPercentage) {
           if (blockInfo.rateLimitPercentage !== null) {
-            const pct = Math.round(pctMode === "left" ? 100 - blockInfo.rateLimitPercentage : blockInfo.rateLimitPercentage);
+            const pct = Math.round(
+              pctMode === "left"
+                ? 100 - blockInfo.rateLimitPercentage
+                : blockInfo.rateLimitPercentage,
+            );
             extras.push(pctMode === "left" ? `${pct}% left` : `${pct}% spent`);
           } else if (blockInfo.timeRemaining !== null) {
-            const leftPct = Math.min(100, Math.round((blockInfo.timeRemaining / blockDurationMinutes) * 100));
+            const leftPct = Math.min(
+              100,
+              Math.round(
+                (blockInfo.timeRemaining / blockDurationMinutes) * 100,
+              ),
+            );
             const pct = pctMode === "used" ? 100 - leftPct : leftPct;
             extras.push(pctMode === "used" ? `${pct}% spent` : `${pct}% left`);
           }
@@ -791,25 +817,45 @@ export class SegmentRenderer {
         if (config?.showElapsed && blockInfo.timeElapsed !== null) {
           const elapsedHours = Math.floor(blockInfo.timeElapsed / 60);
           const elapsedMins = blockInfo.timeElapsed % 60;
-          const elapsedStr = elapsedHours > 0 ? `${elapsedHours}h ${elapsedMins}m` : `${elapsedMins}m`;
+          const elapsedStr =
+            elapsedHours > 0
+              ? `${elapsedHours}h ${elapsedMins}m`
+              : `${elapsedMins}m`;
           extras.push(`${elapsedStr} used`);
         }
 
         const blockMinElapsed = config?.minElapsedMinutes ?? 15;
-        const blockElapsedOk = blockInfo.timeElapsed !== null && blockInfo.timeElapsed >= blockMinElapsed;
+        const blockElapsedOk =
+          blockInfo.timeElapsed !== null &&
+          blockInfo.timeElapsed >= blockMinElapsed;
 
-        if (config?.showProjectedPercentage && blockElapsedOk && blockInfo.projectedUsagePercentage !== null) {
+        if (
+          config?.showProjectedPercentage &&
+          blockElapsedOk &&
+          blockInfo.projectedUsagePercentage !== null
+        ) {
           const pct = Math.round(blockInfo.projectedUsagePercentage);
           const directionOnly = config?.trendMode === "direction-only";
-          const trendArrow = blockInfo.projectedUsageTrend === "down" ? "↓"
-            : blockInfo.projectedUsageTrend === "up" ? "↑"
-            : directionOnly
-              ? (blockInfo.lastNonFlatTrend === "down" ? "↓" : blockInfo.lastNonFlatTrend === "up" ? "↑" : "")
-              : "→";
+          const trendArrow =
+            blockInfo.projectedUsageTrend === "down"
+              ? "↓"
+              : blockInfo.projectedUsageTrend === "up"
+                ? "↑"
+                : directionOnly
+                  ? blockInfo.lastNonFlatTrend === "down"
+                    ? "↓"
+                    : blockInfo.lastNonFlatTrend === "up"
+                      ? "↑"
+                      : ""
+                  : "→";
           extras.push(`${trendArrow}${pct}%`);
         }
 
-        if (config?.showTimeToLimit && blockElapsedOk && blockInfo.minutesToLimit !== null) {
+        if (
+          config?.showTimeToLimit &&
+          blockElapsedOk &&
+          blockInfo.minutesToLimit !== null
+        ) {
           const h = Math.floor(blockInfo.minutesToLimit / 60);
           const m = blockInfo.minutesToLimit % 60;
           const timeStr2 = h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -818,9 +864,10 @@ export class SegmentRenderer {
 
         if (timeStr) extras.push(`${timeStr} left`);
 
-        displayText = extras.length > 0
-          ? `${mainContent}${burnContent} (${extras.join(", ")})`
-          : `${mainContent}${burnContent}`;
+        displayText =
+          extras.length > 0
+            ? `${mainContent}${burnContent} (${extras.join(", ")})`
+            : `${mainContent}${burnContent}`;
       }
     }
 
@@ -970,25 +1017,46 @@ export class SegmentRenderer {
 
     if (config?.showPercentage && weeklyInfo.rateLimitPercentage !== null) {
       const pctMode = config?.percentageMode ?? "used";
-      const pct = Math.round(pctMode === "left" ? 100 - weeklyInfo.rateLimitPercentage : weeklyInfo.rateLimitPercentage);
+      const pct = Math.round(
+        pctMode === "left"
+          ? 100 - weeklyInfo.rateLimitPercentage
+          : weeklyInfo.rateLimitPercentage,
+      );
       extras.push(pctMode === "left" ? `${pct}% left` : `${pct}% spent`);
     }
 
     const weeklyMinElapsed = config?.minElapsedMinutes ?? 60;
-    const weeklyElapsedOk = weeklyInfo.elapsedMinutes !== null && weeklyInfo.elapsedMinutes >= weeklyMinElapsed;
+    const weeklyElapsedOk =
+      weeklyInfo.elapsedMinutes !== null &&
+      weeklyInfo.elapsedMinutes >= weeklyMinElapsed;
 
-    if (config?.showProjectedPercentage && weeklyElapsedOk && weeklyInfo.projectedUsagePercentage !== null) {
+    if (
+      config?.showProjectedPercentage &&
+      weeklyElapsedOk &&
+      weeklyInfo.projectedUsagePercentage !== null
+    ) {
       const pct = Math.round(weeklyInfo.projectedUsagePercentage);
       const directionOnly = config?.trendMode === "direction-only";
-      const trendArrow = weeklyInfo.projectedUsageTrend === "down" ? "↓"
-        : weeklyInfo.projectedUsageTrend === "up" ? "↑"
-        : directionOnly
-          ? (weeklyInfo.lastNonFlatTrend === "down" ? "↓" : weeklyInfo.lastNonFlatTrend === "up" ? "↑" : "")
-          : "→";
+      const trendArrow =
+        weeklyInfo.projectedUsageTrend === "down"
+          ? "↓"
+          : weeklyInfo.projectedUsageTrend === "up"
+            ? "↑"
+            : directionOnly
+              ? weeklyInfo.lastNonFlatTrend === "down"
+                ? "↓"
+                : weeklyInfo.lastNonFlatTrend === "up"
+                  ? "↑"
+                  : ""
+              : "→";
       extras.push(`${trendArrow}${pct}%`);
     }
 
-    if (config?.showTimeToLimit && weeklyElapsedOk && weeklyInfo.minutesToLimit !== null) {
+    if (
+      config?.showTimeToLimit &&
+      weeklyElapsedOk &&
+      weeklyInfo.minutesToLimit !== null
+    ) {
       const h = Math.floor(weeklyInfo.minutesToLimit / 60);
       const m = weeklyInfo.minutesToLimit % 60;
       const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -1035,5 +1103,44 @@ export class SegmentRenderer {
       ? `${this.symbols.env} ${prefix}: ${value}`
       : `${this.symbols.env} ${value}`;
     return { text, bgColor: colors.envBg, fgColor: colors.envFg };
+  }
+
+  renderCacheTimer(
+    info: CacheTimerInfo,
+    colors: PowerlineColors,
+    config?: CacheTimerSegmentConfig,
+  ): SegmentData {
+    const elapsed = info.elapsedSeconds;
+    const iconStr =
+      config?.showIcon !== false
+        ? `${config?.customIcon ?? this.symbols.cache_timer} `
+        : "";
+
+    let bgColor = colors.cacheTimerBg;
+    let fgColor = colors.cacheTimerFg;
+
+    if (config?.displayMode === "remaining") {
+      const ttl = config.ttlSeconds ?? info.detectedTtlSeconds ?? 3600;
+      const remaining = Math.max(0, ttl - elapsed);
+      const text = `${iconStr}${formatCacheTimerRemaining(remaining)}`;
+      if (remaining < 60) {
+        bgColor = colors.contextCriticalBg;
+        fgColor = colors.contextCriticalFg;
+      } else if (remaining < 300) {
+        bgColor = colors.contextWarningBg;
+        fgColor = colors.contextWarningFg;
+      }
+      return { text, bgColor, fgColor };
+    }
+
+    const text = `${iconStr}${formatCacheTimerElapsed(elapsed)}`;
+    if (elapsed >= 300) {
+      bgColor = colors.contextCriticalBg;
+      fgColor = colors.contextCriticalFg;
+    } else if (elapsed >= 180) {
+      bgColor = colors.contextWarningBg;
+      fgColor = colors.contextWarningFg;
+    }
+    return { text, bgColor, fgColor };
   }
 }

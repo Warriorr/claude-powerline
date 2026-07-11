@@ -4,6 +4,7 @@ import type { TodayInfo } from "../segments/today";
 import type { ContextInfo } from "../segments/context";
 import type { MetricsInfo } from "../segments/metrics";
 import type { GitInfo } from "../segments/git";
+import type { CacheTimerInfo } from "../segments/cacheTimer";
 import type { ClaudeHookData } from "../utils/claude";
 import type { PowerlineColors } from "../themes";
 
@@ -28,6 +29,7 @@ export interface TuiData {
   contextInfo: ContextInfo | null;
   metricsInfo: MetricsInfo | null;
   gitInfo: GitInfo | null;
+  cacheTimerInfo: CacheTimerInfo | null;
   tmuxSessionId: string | null;
   speed: string | null;
   colors: PowerlineColors;
