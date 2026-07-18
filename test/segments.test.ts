@@ -2,7 +2,13 @@ import { BlockProvider } from "../src/segments/block";
 import { TodayProvider } from "../src/segments/today";
 import { SegmentRenderer } from "../src/segments/renderer";
 import { CacheTimerProvider } from "../src/segments/cacheTimer";
-import { parseScopedLimits } from "../src/segments/weeklyScoped";
+import {
+  parseScopedLimits,
+  isCacheEntryFresh,
+  buildCacheEntry,
+  limitsFromCacheEntry,
+  type WeeklyScopedCacheEntry,
+} from "../src/segments/weeklyScoped";
 import {
   formatCacheTimerElapsed,
   formatCacheTimerRemaining,
@@ -1009,6 +1015,145 @@ describe("WeeklyScoped Segment", () => {
       const limits = parseScopedLimits(body);
       expect(limits).toHaveLength(1);
       expect(limits[0]!.resetsAt).toBeNull();
+    });
+  });
+
+  describe("serve-stale cache logic", () => {
+    const now = Date.parse("2026-07-18T12:00:00Z");
+    const fableLimit = {
+      displayName: "Fable",
+      usedPercentage: 47,
+      resetsAt: "2026-07-20T17:59:59.921Z",
+    };
+
+    const okEntry = (ageMs: number): WeeklyScopedCacheEntry => ({
+      status: "ok",
+      at: now - ageMs,
+      limits: [fableLimit],
+      lastSuccessAt: now - ageMs,
+    });
+
+    describe("isCacheEntryFresh", () => {
+      it("keeps successful results for 60 seconds", () => {
+        expect(isCacheEntryFresh(okEntry(30_000), now)).toBe(true);
+        expect(isCacheEntryFresh(okEntry(90_000), now)).toBe(false);
+      });
+
+      it("backs off for 5 minutes after a failure", () => {
+        const errorEntry: WeeklyScopedCacheEntry = {
+          status: "error",
+          at: now - 90_000,
+          limits: [fableLimit],
+          lastSuccessAt: now - 400_000,
+        };
+        expect(isCacheEntryFresh(errorEntry, now)).toBe(true);
+        expect(
+          isCacheEntryFresh({ ...errorEntry, at: now - 400_000 }, now),
+        ).toBe(false);
+      });
+
+      it("treats legacy entries without a status as stale", () => {
+        expect(isCacheEntryFresh({ limits: [] } as any, now)).toBe(false);
+      });
+
+      it("treats future timestamps as stale instead of fresh forever", () => {
+        expect(isCacheEntryFresh(okEntry(-30_000), now)).toBe(false);
+      });
+
+      it("rejects entries whose limits field is not an array", () => {
+        const corrupted = { ...okEntry(30_000), limits: "garbage" as any };
+        expect(isCacheEntryFresh(corrupted, now)).toBe(false);
+      });
+    });
+
+    describe("buildCacheEntry", () => {
+      it("records a successful fetch with its limits", () => {
+        const entry = buildCacheEntry(null, apiBody, now);
+        expect(entry.status).toBe("ok");
+        expect(entry.at).toBe(now);
+        expect(entry.lastSuccessAt).toBe(now);
+        expect(entry.limits).toHaveLength(1);
+        expect(entry.limits[0]!.displayName).toBe("Fable");
+      });
+
+      it("keeps an authoritative empty success empty", () => {
+        const entry = buildCacheEntry(okEntry(90_000), { limits: [] }, now);
+        expect(entry.status).toBe("ok");
+        expect(entry.limits).toEqual([]);
+      });
+
+      it("carries the last good limits through a failed fetch", () => {
+        const previous = okEntry(90_000);
+        const entry = buildCacheEntry(previous, null, now);
+        expect(entry.status).toBe("error");
+        expect(entry.at).toBe(now);
+        expect(entry.limits).toEqual(previous.limits);
+        expect(entry.lastSuccessAt).toBe(previous.lastSuccessAt);
+      });
+
+      it("stays empty when a fetch fails with no prior success", () => {
+        const entry = buildCacheEntry(null, null, now);
+        expect(entry.status).toBe("error");
+        expect(entry.limits).toEqual([]);
+        expect(entry.lastSuccessAt).toBeNull();
+      });
+    });
+
+    describe("limitsFromCacheEntry", () => {
+      it("revives dates from cached limits", () => {
+        const limits = limitsFromCacheEntry(okEntry(30_000), now);
+        expect(limits).toHaveLength(1);
+        expect(limits[0]!.resetsAt).toEqual(
+          new Date("2026-07-20T17:59:59.921Z"),
+        );
+      });
+
+      it("drops limits whose reset time has already passed", () => {
+        const entry: WeeklyScopedCacheEntry = {
+          status: "error",
+          at: now,
+          limits: [{ ...fableLimit, resetsAt: "2026-07-17T00:00:00Z" }],
+          lastSuccessAt: now - 1000,
+        };
+        expect(limitsFromCacheEntry(entry, now)).toEqual([]);
+      });
+
+      it("keeps limits without a reset timestamp", () => {
+        const entry: WeeklyScopedCacheEntry = {
+          status: "error",
+          at: now,
+          limits: [{ ...fableLimit, resetsAt: null }],
+          lastSuccessAt: now - 1000,
+        };
+        expect(limitsFromCacheEntry(entry, now)).toHaveLength(1);
+      });
+
+      it("skips malformed cached limit items instead of throwing", () => {
+        const entry: WeeklyScopedCacheEntry = {
+          status: "ok",
+          at: now,
+          limits: [
+            fableLimit,
+            null,
+            { displayName: 42, usedPercentage: "high" },
+            "junk",
+          ] as any,
+          lastSuccessAt: now,
+        };
+        const limits = limitsFromCacheEntry(entry, now);
+        expect(limits).toHaveLength(1);
+        expect(limits[0]!.displayName).toBe("Fable");
+      });
+
+      it("returns empty for a non-array limits field", () => {
+        const entry = {
+          status: "ok",
+          at: now,
+          limits: "garbage",
+          lastSuccessAt: now,
+        } as any;
+        expect(limitsFromCacheEntry(entry, now)).toEqual([]);
+      });
     });
   });
 

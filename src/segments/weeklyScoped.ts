@@ -17,7 +17,10 @@ export interface WeeklyScopedInfo {
 
 const USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 const FETCH_TIMEOUT_MS = 5000;
-const CACHE_TTL_MS = 60 * 1000;
+const OK_TTL_MS = 60 * 1000;
+// Longer backoff after failures: the usage endpoint rate-limits per account
+// and rejected requests may themselves count against the limit.
+const ERROR_BACKOFF_MS = 5 * 60 * 1000;
 
 interface RawUsageLimit {
   kind?: string;
@@ -30,10 +33,19 @@ interface RawUsageLimit {
   } | null;
 }
 
-interface CachedScopedLimit {
+export interface CachedScopedLimit {
   displayName: string;
   usedPercentage: number;
   resetsAt: string | null;
+}
+
+export interface WeeklyScopedCacheEntry {
+  status: "ok" | "error";
+  /** When this status was recorded */
+  at: number;
+  /** Limits from the most recent successful fetch */
+  limits: CachedScopedLimit[];
+  lastSuccessAt: number | null;
 }
 
 /**
@@ -144,29 +156,111 @@ function fromCachedLimits(limits: CachedScopedLimit[]): ScopedWeeklyLimit[] {
   }));
 }
 
+function isValidCachedLimit(limit: unknown): limit is CachedScopedLimit {
+  if (!limit || typeof limit !== "object") {
+    return false;
+  }
+  const candidate = limit as Partial<CachedScopedLimit>;
+  return (
+    typeof candidate.displayName === "string" &&
+    typeof candidate.usedPercentage === "number" &&
+    (candidate.resetsAt === null || typeof candidate.resetsAt === "string")
+  );
+}
+
+function isKnownEntryShape(entry: unknown): entry is WeeklyScopedCacheEntry {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const candidate = entry as Partial<WeeklyScopedCacheEntry>;
+  return (
+    (candidate.status === "ok" || candidate.status === "error") &&
+    typeof candidate.at === "number" &&
+    Array.isArray(candidate.limits)
+  );
+}
+
+export function isCacheEntryFresh(
+  entry: WeeklyScopedCacheEntry | null | undefined,
+  now: number,
+): boolean {
+  if (!isKnownEntryShape(entry)) {
+    return false;
+  }
+  const age = now - entry.at;
+  // A future timestamp (clock skew) would otherwise stay fresh forever.
+  if (age < 0) {
+    return false;
+  }
+  return age < (entry.status === "ok" ? OK_TTL_MS : ERROR_BACKOFF_MS);
+}
+
+/**
+ * Fold a fetch outcome into the next cache entry. A successful response is
+ * authoritative even when it contains no scoped limits (the plan simply has
+ * none); a failed fetch (body null) carries the previous successful limits
+ * forward so the segment can serve stale data instead of hiding.
+ */
+export function buildCacheEntry(
+  previous: WeeklyScopedCacheEntry | null,
+  body: unknown,
+  now: number,
+): WeeklyScopedCacheEntry {
+  if (body) {
+    return {
+      status: "ok",
+      at: now,
+      limits: toCachedLimits(parseScopedLimits(body)),
+      lastSuccessAt: now,
+    };
+  }
+  return {
+    status: "error",
+    at: now,
+    limits: (previous?.limits ?? []).filter(isValidCachedLimit),
+    lastSuccessAt: previous?.lastSuccessAt ?? null,
+  };
+}
+
+/**
+ * Limits that are still meaningful to render: a stale percentage whose reset
+ * time has passed belongs to a finished weekly window and is dropped.
+ */
+export function limitsFromCacheEntry(
+  entry: WeeklyScopedCacheEntry,
+  now: number,
+): ScopedWeeklyLimit[] {
+  const cachedLimits = Array.isArray(entry?.limits)
+    ? entry.limits.filter(isValidCachedLimit)
+    : [];
+  return fromCachedLimits(cachedLimits).filter(
+    (limit) => !limit.resetsAt || limit.resetsAt.getTime() > now,
+  );
+}
+
 export class WeeklyScopedProvider {
   async getWeeklyScopedInfo(): Promise<WeeklyScopedInfo> {
     try {
-      const cached = await CacheManager.getUsageCache(
-        "weeklyScoped",
-        Date.now() - CACHE_TTL_MS,
-      );
-      if (cached?.limits) {
-        debug("Using cached scoped weekly limits");
-        return { limits: fromCachedLimits(cached.limits) };
-      }
+      const now = Date.now();
+      const raw = await CacheManager.getUsageCache("weeklyScoped");
+      // Legacy or corrupted cache entries ({limits} without status/at, or a
+      // non-array limits field) are ambiguous, so they neither count as
+      // fresh nor seed the stale fallback.
+      const cached = isKnownEntryShape(raw) ? raw : null;
 
+      if (cached && isCacheEntryFresh(cached, now)) {
+        debug(`Using cached scoped weekly limits (status: ${cached.status})`);
+        return { limits: limitsFromCacheEntry(cached, now) };
+      }
       const token = await readOAuthToken();
       const body = token ? await fetchUsageData(token) : null;
-      const limits = body ? parseScopedLimits(body) : [];
+      const entry = buildCacheEntry(cached, body, now);
+      await CacheManager.setUsageCache("weeklyScoped", entry);
 
-      // Cache failures as empty results too, so a broken fetch or missing
-      // credentials never causes a network attempt on every render.
-      await CacheManager.setUsageCache("weeklyScoped", {
-        limits: toCachedLimits(limits),
-      });
-
-      debug(`Scoped weekly limits: ${limits.length} found`);
+      const limits = limitsFromCacheEntry(entry, now);
+      debug(
+        `Scoped weekly limits: ${limits.length} usable (fetch ${entry.status})`,
+      );
       return { limits };
     } catch (error) {
       debug("Error getting scoped weekly info:", error);
