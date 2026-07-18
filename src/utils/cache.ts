@@ -16,13 +16,22 @@ export interface CacheEntry<T> {
 }
 
 export class CacheManager {
-  private static readonly CACHE_DIR = path.join(
-    homedir(),
-    ".claude",
-    "powerline",
-  );
-  private static readonly USAGE_CACHE_DIR = path.join(this.CACHE_DIR, "usage");
-  private static readonly LOCKS_DIR = path.join(this.CACHE_DIR, "locks");
+  // Getters (not readonly fields) so tests can point the whole cache at a
+  // temp directory via CLAUDE_POWERLINE_CACHE_DIR after module load.
+  private static get CACHE_DIR(): string {
+    return (
+      process.env.CLAUDE_POWERLINE_CACHE_DIR ??
+      path.join(homedir(), ".claude", "powerline")
+    );
+  }
+
+  private static get USAGE_CACHE_DIR(): string {
+    return path.join(this.CACHE_DIR, "usage");
+  }
+
+  private static get LOCKS_DIR(): string {
+    return path.join(this.CACHE_DIR, "locks");
+  }
 
   private static isLocked(name: string): boolean {
     const lockFile = path.join(this.LOCKS_DIR, name);
@@ -87,6 +96,44 @@ export class CacheManager {
     }
     debug(`Failed to acquire lock for ${name} within ${timeout}ms`);
     return false;
+  }
+
+  /**
+   * Non-blocking cross-process claim for "I am fetching <name> right now".
+   * Statusline renders race each other constantly; the loser must serve
+   * cached data immediately rather than wait on the winner's network call,
+   * so unlike acquireLock this never retries. Stale locks from dead
+   * processes are cleaned up by the isLocked check.
+   */
+  static async tryAcquireFetchLock(name: string): Promise<boolean> {
+    const lockName = `${name}.fetch.lock`;
+    await this.ensureCacheDirectories();
+    if (this.isLocked(lockName)) {
+      return false;
+    }
+    const lockFile = path.join(this.LOCKS_DIR, lockName);
+    // Claim via hard link instead of writeFile with "wx": writeFile creates
+    // the file empty before writing content, and a concurrent isLocked can
+    // read that empty window as a corrupt lock and delete it, allowing two
+    // winners. link() is atomic and the content is complete on arrival.
+    const tempFile = `${lockFile}.${process.pid}.tmp`;
+    try {
+      await fs.promises.writeFile(tempFile, String(process.pid));
+      await fs.promises.link(tempFile, lockFile);
+      debug(`Fetch lock acquired for ${name}`);
+      return true;
+    } catch (error: any) {
+      if (error.code !== "EEXIST") {
+        debug(`Error acquiring fetch lock for ${name}:`, error);
+      }
+      return false;
+    } finally {
+      await fs.promises.unlink(tempFile).catch(() => {});
+    }
+  }
+
+  static async releaseFetchLock(name: string): Promise<void> {
+    await this.releaseLock(`${name}.fetch.lock`);
   }
 
   private static async releaseLock(name: string): Promise<void> {

@@ -252,16 +252,37 @@ export class WeeklyScopedProvider {
         debug(`Using cached scoped weekly limits (status: ${cached.status})`);
         return { limits: limitsFromCacheEntry(cached, now) };
       }
-      const token = await readOAuthToken();
-      const body = token ? await fetchUsageData(token) : null;
-      const entry = buildCacheEntry(cached, body, now);
-      await CacheManager.setUsageCache("weeklyScoped", entry);
 
-      const limits = limitsFromCacheEntry(entry, now);
-      debug(
-        `Scoped weekly limits: ${limits.length} usable (fetch ${entry.status})`,
-      );
-      return { limits };
+      if (!(await CacheManager.tryAcquireFetchLock("weeklyScoped"))) {
+        // Another render is already fetching; serve what we have instead
+        // of issuing a duplicate request against the rate-limited endpoint.
+        debug("Scoped weekly fetch already in flight, serving existing data");
+        return { limits: cached ? limitsFromCacheEntry(cached, now) : [] };
+      }
+
+      try {
+        // The render we raced with may have refreshed the cache between
+        // our read and the lock claim.
+        const recheckRaw = await CacheManager.getUsageCache("weeklyScoped");
+        const recheck = isKnownEntryShape(recheckRaw) ? recheckRaw : null;
+        if (recheck && isCacheEntryFresh(recheck, now)) {
+          debug("Cache was refreshed while acquiring the fetch lock");
+          return { limits: limitsFromCacheEntry(recheck, now) };
+        }
+
+        const token = await readOAuthToken();
+        const body = token ? await fetchUsageData(token) : null;
+        const entry = buildCacheEntry(recheck ?? cached, body, now);
+        await CacheManager.setUsageCache("weeklyScoped", entry);
+
+        const limits = limitsFromCacheEntry(entry, now);
+        debug(
+          `Scoped weekly limits: ${limits.length} usable (fetch ${entry.status})`,
+        );
+        return { limits };
+      } finally {
+        await CacheManager.releaseFetchLock("weeklyScoped");
+      }
     } catch (error) {
       debug("Error getting scoped weekly info:", error);
       return { limits: [] };
