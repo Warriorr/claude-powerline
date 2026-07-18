@@ -8,6 +8,7 @@ export const rosePineTheme: ColorTheme = {
   block: { bg: "#4a475e", fg: "#eb6f92" }, // between highlight_med and highlight_high
   today: { bg: "#353246", fg: "#9ccfd8" }, // between overlay and highlight_med
   weekly: { bg: "#302e43", fg: "#f6c177" }, // slightly above surface
+  weeklyScoped: { bg: "#302e43", fg: "#ebbcba" }, // rose accent beside weekly gold
   tmux: { bg: "#403d52", fg: "#908caa" }, // highlight_med
   context: { bg: "#524f67", fg: "#e0def4" }, // highlight_high
   contextWarning: { bg: "#f6c177", fg: "#191724" },
@@ -26,6 +27,7 @@ export const rosePineAnsi256Theme: ColorTheme = {
   block: { bg: "#4e4e4e", fg: "#ff5f87" },
   today: { bg: "#3a3a3a", fg: "#87d7d7" },
   weekly: { bg: "#303030", fg: "#d7af5f" },
+  weeklyScoped: { bg: "#303030", fg: "#ffaf87" },
   tmux: { bg: "#444444", fg: "#9e9e9e" },
   context: { bg: "#585858", fg: "#e4e4e4" },
   contextWarning: { bg: "#d7af5f", fg: "#1c1c1c" },
@@ -44,6 +46,7 @@ export const rosePineAnsiTheme: ColorTheme = {
   block: { bg: "#666666", fg: "#ff5f87" },
   today: { bg: "#444444", fg: "#00d7d7" },
   weekly: { bg: "#585858", fg: "#ffaf00" },
+  weeklyScoped: { bg: "#585858", fg: "#ffaf87" },
   tmux: { bg: "#585858", fg: "#bcbcbc" },
   context: { bg: "#808080", fg: "#ffffff" },
   contextWarning: { bg: "#d7af00", fg: "#000000" },

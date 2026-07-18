@@ -8,6 +8,8 @@ import { DEFAULT_CONFIG } from "../src/config/defaults";
 
 // Use empty strings for colors so snapshots capture layout, not ANSI codes
 const PLAIN_COLORS: PowerlineColors = {
+  weeklyScopedBg: "",
+  weeklyScopedFg: "",
   reset: "",
   modeBg: "",
   modeFg: "",

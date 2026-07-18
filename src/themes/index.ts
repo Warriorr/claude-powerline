@@ -30,6 +30,7 @@ export interface ColorTheme {
   block: SegmentColor;
   today: SegmentColor;
   weekly: SegmentColor;
+  weeklyScoped: SegmentColor;
   tmux: SegmentColor;
   context: SegmentColor;
   contextWarning: SegmentColor;
@@ -56,6 +57,8 @@ export interface PowerlineColors {
   todayFg: string;
   weeklyBg: string;
   weeklyFg: string;
+  weeklyScopedBg: string;
+  weeklyScopedFg: string;
   tmuxBg: string;
   tmuxFg: string;
   contextBg: string;

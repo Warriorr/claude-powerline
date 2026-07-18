@@ -2,6 +2,7 @@ import { BlockProvider } from "../src/segments/block";
 import { TodayProvider } from "../src/segments/today";
 import { SegmentRenderer } from "../src/segments/renderer";
 import { CacheTimerProvider } from "../src/segments/cacheTimer";
+import { parseScopedLimits } from "../src/segments/weeklyScoped";
 import {
   formatCacheTimerElapsed,
   formatCacheTimerRemaining,
@@ -917,5 +918,171 @@ describe("CacheTimer Segment", () => {
     const provider = new CacheTimerProvider();
     const result = await provider.getCacheTimerInfo({} as ClaudeHookData);
     expect(result).toBeNull();
+  });
+});
+
+describe("WeeklyScoped Segment", () => {
+  const rendererConfig = {
+    theme: "dark",
+    display: { style: "minimal" },
+  } as any;
+  const symbols = { weekly_scoped: "" } as any;
+  const colors = {
+    weeklyScopedBg: "#252525",
+    weeklyScopedFg: "#ffa500",
+  } as any;
+
+  const apiBody = {
+    five_hour: { utilization: 5 },
+    seven_day: { utilization: 28 },
+    limits: [
+      {
+        kind: "session",
+        percent: 5,
+        resets_at: "2026-07-18T12:39:59.921059+00:00",
+        scope: null,
+      },
+      {
+        kind: "weekly_all",
+        percent: 28,
+        resets_at: "2026-07-20T17:59:59.921085+00:00",
+        scope: null,
+      },
+      {
+        kind: "weekly_scoped",
+        percent: 47,
+        resets_at: "2026-07-20T17:59:59.921406+00:00",
+        scope: { model: { id: null, display_name: "Fable" } },
+      },
+    ],
+  };
+
+  describe("parseScopedLimits", () => {
+    it("extracts only weekly_scoped entries with the model name", () => {
+      const limits = parseScopedLimits(apiBody);
+      expect(limits).toHaveLength(1);
+      expect(limits[0]!.displayName).toBe("Fable");
+      expect(limits[0]!.usedPercentage).toBe(47);
+      expect(limits[0]!.resetsAt).toEqual(
+        new Date("2026-07-20T17:59:59.921406+00:00"),
+      );
+    });
+
+    it("returns empty for plans without scoped limits", () => {
+      const body = {
+        limits: [{ kind: "session", percent: 5 }],
+      };
+      expect(parseScopedLimits(body)).toEqual([]);
+    });
+
+    it("skips scoped entries without a model display name or percent", () => {
+      const body = {
+        limits: [
+          { kind: "weekly_scoped", percent: 47, scope: { model: null } },
+          {
+            kind: "weekly_scoped",
+            scope: { model: { display_name: "Fable" } },
+          },
+        ],
+      };
+      expect(parseScopedLimits(body)).toEqual([]);
+    });
+
+    it("tolerates malformed bodies", () => {
+      expect(parseScopedLimits(null)).toEqual([]);
+      expect(parseScopedLimits("nonsense")).toEqual([]);
+      expect(parseScopedLimits({})).toEqual([]);
+      expect(parseScopedLimits({ limits: "not-an-array" })).toEqual([]);
+    });
+
+    it("nulls invalid reset timestamps instead of propagating them", () => {
+      const body = {
+        limits: [
+          {
+            kind: "weekly_scoped",
+            percent: 12,
+            resets_at: "not-a-date",
+            scope: { model: { display_name: "Fable" } },
+          },
+        ],
+      };
+      const limits = parseScopedLimits(body);
+      expect(limits).toHaveLength(1);
+      expect(limits[0]!.resetsAt).toBeNull();
+    });
+  });
+
+  describe("renderWeeklyScoped", () => {
+    const renderer = new SegmentRenderer(rendererConfig, symbols);
+
+    it("hides the segment entirely when no scoped limit exists", () => {
+      const result = renderer.renderWeeklyScoped({ limits: [] }, colors);
+      expect(result).toBeNull();
+    });
+
+    it("renders the model name and used percentage", () => {
+      const result = renderer.renderWeeklyScoped(
+        {
+          limits: [
+            { displayName: "Fable", usedPercentage: 47.4, resetsAt: null },
+          ],
+        },
+        colors,
+      );
+      expect(result).not.toBeNull();
+      expect(result!.text).toContain("Fable 47%");
+      expect(result!.bgColor).toBe(colors.weeklyScopedBg);
+      expect(result!.fgColor).toBe(colors.weeklyScopedFg);
+    });
+
+    it("supports left percentage mode", () => {
+      const result = renderer.renderWeeklyScoped(
+        {
+          limits: [
+            { displayName: "Fable", usedPercentage: 47, resetsAt: null },
+          ],
+        },
+        colors,
+        { enabled: true, percentageMode: "left" },
+      );
+      expect(result!.text).toContain("Fable 53% left");
+    });
+
+    it("shows time until reset when enabled", () => {
+      const resetsAt = new Date(Date.now() + 26 * 60 * 60 * 1000);
+      const result = renderer.renderWeeklyScoped(
+        { limits: [{ displayName: "Fable", usedPercentage: 47, resetsAt }] },
+        colors,
+        { enabled: true, showTimeLeft: true },
+      );
+      expect(result!.text).toMatch(/\(1d \dh left\)/);
+    });
+
+    it("can hide the model name and icon", () => {
+      const result = renderer.renderWeeklyScoped(
+        {
+          limits: [
+            { displayName: "Fable", usedPercentage: 47, resetsAt: null },
+          ],
+        },
+        colors,
+        { enabled: true, showModelName: false, showIcon: false },
+      );
+      expect(result!.text).toBe("47%");
+    });
+
+    it("joins multiple scoped limits", () => {
+      const result = renderer.renderWeeklyScoped(
+        {
+          limits: [
+            { displayName: "Fable", usedPercentage: 47, resetsAt: null },
+            { displayName: "Opus", usedPercentage: 12, resetsAt: null },
+          ],
+        },
+        colors,
+        { enabled: true, showIcon: false },
+      );
+      expect(result!.text).toBe("Fable 47%, Opus 12%");
+    });
   });
 });

@@ -118,7 +118,7 @@ export class CacheManager {
   }
 
   static async getUsageCache(
-    cacheType: "today" | "block" | "pricing" | "weekly",
+    cacheType: "today" | "block" | "pricing" | "weekly" | "weeklyScoped",
     latestMtime?: number,
   ): Promise<any | null> {
     const MAX_RETRIES = 3;
@@ -179,7 +179,7 @@ export class CacheManager {
   }
 
   static async setUsageCache(
-    cacheType: "today" | "block" | "pricing" | "weekly",
+    cacheType: "today" | "block" | "pricing" | "weekly" | "weeklyScoped",
     data: any,
     latestMtime?: number,
   ): Promise<void> {

@@ -42,6 +42,9 @@
             "showProjectedPercentage": true,
             "trendMode": "direction-only"
           },
+          "weeklyScoped": {
+            "enabled": true
+          },
           "version": {
             "enabled": true
           },

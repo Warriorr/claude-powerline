@@ -98,6 +98,16 @@ export interface WeeklySegmentConfig extends SegmentConfig {
   customIcon?: string;
 }
 
+export interface WeeklyScopedSegmentConfig extends SegmentConfig {
+  /** "used" shows "47%", "left" shows "53% left" */
+  percentageMode?: "left" | "used";
+  /** Show the model display name reported by the API, e.g. "Fable" (default: true) */
+  showModelName?: boolean;
+  showTimeLeft?: boolean;
+  showIcon?: boolean;
+  customIcon?: string;
+}
+
 export interface VersionSegmentConfig extends SegmentConfig {}
 
 export interface SessionIdSegmentConfig extends SegmentConfig {
@@ -140,6 +150,7 @@ export type AnySegmentConfig =
   | BlockSegmentConfig
   | TodaySegmentConfig
   | WeeklySegmentConfig
+  | WeeklyScopedSegmentConfig
   | VersionSegmentConfig
   | SessionIdSegmentConfig
   | EnvSegmentConfig
@@ -165,6 +176,7 @@ import type {
 } from ".";
 import type { TodayInfo } from "./today";
 import type { WeeklyInfo } from "./weekly";
+import type { WeeklyScopedInfo } from "./weeklyScoped";
 
 export interface PowerlineSymbols {
   right: string;
@@ -186,6 +198,7 @@ export interface PowerlineSymbols {
   block_cost: string;
   today_cost: string;
   weekly_cost: string;
+  weekly_scoped: string;
   context_time: string;
   metrics_response: string;
   metrics_last_response: string;
@@ -1089,6 +1102,58 @@ export class SegmentRenderer {
       text,
       bgColor: colors.weeklyBg,
       fgColor: colors.weeklyFg,
+    };
+  }
+
+  renderWeeklyScoped(
+    info: WeeklyScopedInfo,
+    colors: PowerlineColors,
+    config?: WeeklyScopedSegmentConfig,
+  ): SegmentData | null {
+    if (info.limits.length === 0) {
+      return null;
+    }
+
+    const pctMode = config?.percentageMode ?? "used";
+    const parts = info.limits.map((limit) => {
+      const pct = Math.round(
+        pctMode === "left" ? 100 - limit.usedPercentage : limit.usedPercentage,
+      );
+      const name =
+        config?.showModelName !== false ? `${limit.displayName} ` : "";
+      let part = `${name}${pct}%${pctMode === "left" ? " left" : ""}`;
+
+      if (config?.showTimeLeft && limit.resetsAt) {
+        const minutesLeft = Math.max(
+          0,
+          Math.round(
+            (limit.resetsAt.getTime() - new Date().getTime()) / (1000 * 60),
+          ),
+        );
+        const days = Math.floor(minutesLeft / (24 * 60));
+        const hours = Math.floor((minutesLeft % (24 * 60)) / 60);
+        const mins = minutesLeft % 60;
+        const timeStr =
+          days > 0
+            ? `${days}d ${hours}h`
+            : hours > 0
+              ? `${hours}h ${mins}m`
+              : `${mins}m`;
+        part += ` (${timeStr} left)`;
+      }
+
+      return part;
+    });
+
+    const iconStr =
+      config?.showIcon !== false
+        ? `${config?.customIcon ?? this.symbols.weekly_scoped} `
+        : "";
+
+    return {
+      text: `${iconStr}${parts.join(", ")}`,
+      bgColor: colors.weeklyScopedBg,
+      fgColor: colors.weeklyScopedFg,
     };
   }
 

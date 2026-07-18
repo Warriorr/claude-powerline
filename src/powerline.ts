@@ -31,6 +31,7 @@ import {
   BlockSegmentConfig,
   TodaySegmentConfig,
   WeeklySegmentConfig,
+  WeeklyScopedSegmentConfig,
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
@@ -40,6 +41,10 @@ import {
 import { BlockProvider, BlockInfo } from "./segments/block";
 import { TodayProvider, TodayInfo } from "./segments/today";
 import { WeeklyProvider, WeeklyInfo } from "./segments/weekly";
+import {
+  WeeklyScopedProvider,
+  WeeklyScopedInfo,
+} from "./segments/weeklyScoped";
 import { CacheTimerProvider, CacheTimerInfo } from "./segments/cacheTimer";
 import {
   SYMBOLS,
@@ -65,6 +70,7 @@ export class PowerlineRenderer {
   private _blockProvider?: BlockProvider;
   private _todayProvider?: TodayProvider;
   private _weeklyProvider?: WeeklyProvider;
+  private _weeklyScopedProvider?: WeeklyScopedProvider;
   private _contextProvider?: ContextProvider;
   private _gitService?: GitService;
   private _tmuxService?: TmuxService;
@@ -103,6 +109,13 @@ export class PowerlineRenderer {
       this._weeklyProvider = new WeeklyProvider();
     }
     return this._weeklyProvider;
+  }
+
+  private get weeklyScopedProvider(): WeeklyScopedProvider {
+    if (!this._weeklyScopedProvider) {
+      this._weeklyScopedProvider = new WeeklyScopedProvider();
+    }
+    return this._weeklyScopedProvider;
   }
 
   private get contextProvider(): ContextProvider {
@@ -186,6 +199,10 @@ export class PowerlineRenderer {
       ? await this.weeklyProvider.getWeeklyInfo(hookData.rate_limits?.seven_day)
       : null;
 
+    const weeklyScopedInfo = this.needsSegmentInfo("weeklyScoped")
+      ? await this.weeklyScopedProvider.getWeeklyScopedInfo()
+      : null;
+
     const contextSegmentConfig = this.config.display.lines
       .map((line) => line.segments.context)
       .find((c) => c?.enabled) as ContextSegmentConfig | undefined;
@@ -209,6 +226,7 @@ export class PowerlineRenderer {
         blockInfo,
         todayInfo,
         weeklyInfo,
+        weeklyScopedInfo,
         contextInfo,
         metricsInfo,
         cacheTimerInfo,
@@ -224,6 +242,7 @@ export class PowerlineRenderer {
           blockInfo,
           todayInfo,
           weeklyInfo,
+          weeklyScopedInfo,
           contextInfo,
           metricsInfo,
           cacheTimerInfo,
@@ -240,6 +259,7 @@ export class PowerlineRenderer {
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
     weeklyInfo: WeeklyInfo | null,
+    weeklyScopedInfo: WeeklyScopedInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
     cacheTimerInfo: CacheTimerInfo | null,
@@ -270,6 +290,7 @@ export class PowerlineRenderer {
           blockInfo,
           todayInfo,
           weeklyInfo,
+          weeklyScopedInfo,
           contextInfo,
           metricsInfo,
           cacheTimerInfo,
@@ -465,6 +486,7 @@ export class PowerlineRenderer {
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
     weeklyInfo: WeeklyInfo | null,
+    weeklyScopedInfo: WeeklyScopedInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
     cacheTimerInfo: CacheTimerInfo | null,
@@ -488,6 +510,7 @@ export class PowerlineRenderer {
         blockInfo,
         todayInfo,
         weeklyInfo,
+        weeklyScopedInfo,
         contextInfo,
         metricsInfo,
         cacheTimerInfo,
@@ -515,6 +538,7 @@ export class PowerlineRenderer {
     blockInfo: BlockInfo | null,
     todayInfo: TodayInfo | null,
     weeklyInfo: WeeklyInfo | null,
+    weeklyScopedInfo: WeeklyScopedInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
     cacheTimerInfo: CacheTimerInfo | null,
@@ -605,6 +629,14 @@ export class PowerlineRenderer {
       return this.renderWeeklySegment(
         segment.config as WeeklySegmentConfig,
         weeklyInfo,
+        colors,
+      );
+    }
+
+    if (segment.type === "weeklyScoped") {
+      return this.renderWeeklyScopedSegment(
+        segment.config as WeeklyScopedSegmentConfig,
+        weeklyScopedInfo,
         colors,
       );
     }
@@ -721,6 +753,19 @@ export class PowerlineRenderer {
     return this.segmentRenderer.renderToday(todayInfo, colors, todayType);
   }
 
+  private renderWeeklyScopedSegment(
+    config: WeeklyScopedSegmentConfig,
+    weeklyScopedInfo: WeeklyScopedInfo | null,
+    colors: PowerlineColors,
+  ) {
+    if (!weeklyScopedInfo) return null;
+    return this.segmentRenderer.renderWeeklyScoped(
+      weeklyScopedInfo,
+      colors,
+      config,
+    );
+  }
+
   private renderWeeklySegment(
     config: WeeklySegmentConfig,
     weeklyInfo: WeeklyInfo | null,
@@ -769,6 +814,7 @@ export class PowerlineRenderer {
       block_cost: symbolSet.block_cost,
       today_cost: symbolSet.today_cost,
       weekly_cost: symbolSet.weekly_cost,
+      weekly_scoped: symbolSet.weekly_scoped,
       context_time: symbolSet.context_time,
       metrics_response: symbolSet.metrics_response,
       metrics_last_response: symbolSet.metrics_last_response,
@@ -867,6 +913,7 @@ export class PowerlineRenderer {
     const block = getSegmentColors("block");
     const today = getSegmentColors("today");
     const weekly = getSegmentColors("weekly");
+    const weeklyScoped = getSegmentColors("weeklyScoped");
     const tmux = getSegmentColors("tmux");
     const context = getSegmentColors("context");
     const contextWarning = getSegmentColors("contextWarning");
@@ -892,6 +939,8 @@ export class PowerlineRenderer {
       todayFg: today.fg,
       weeklyBg: weekly.bg,
       weeklyFg: weekly.fg,
+      weeklyScopedBg: weeklyScoped.bg,
+      weeklyScopedFg: weeklyScoped.fg,
       tmuxBg: tmux.bg,
       tmuxFg: tmux.fg,
       contextBg: context.bg,
@@ -931,6 +980,8 @@ export class PowerlineRenderer {
         return colors.todayBg;
       case "weekly":
         return colors.weeklyBg;
+      case "weeklyScoped":
+        return colors.weeklyScopedBg;
       case "cacheTimer":
         return colors.cacheTimerBg;
       case "tmux":

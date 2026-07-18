@@ -21,6 +21,7 @@ export type {
   BlockSegmentConfig,
   TodaySegmentConfig,
   WeeklySegmentConfig,
+  WeeklyScopedSegmentConfig,
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
@@ -29,3 +30,5 @@ export type {
 } from "./renderer";
 export { WeeklyProvider } from "./weekly";
 export type { WeeklyInfo } from "./weekly";
+export { WeeklyScopedProvider } from "./weeklyScoped";
+export type { WeeklyScopedInfo, ScopedWeeklyLimit } from "./weeklyScoped";

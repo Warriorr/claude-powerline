@@ -13,6 +13,7 @@ import type {
   BlockSegmentConfig,
   TodaySegmentConfig,
   WeeklySegmentConfig,
+  WeeklyScopedSegmentConfig,
   VersionSegmentConfig,
   SessionIdSegmentConfig,
   EnvSegmentConfig,
@@ -29,6 +30,7 @@ export interface LineConfig {
     block?: BlockSegmentConfig;
     today?: TodaySegmentConfig;
     weekly?: WeeklySegmentConfig;
+    weeklyScoped?: WeeklyScopedSegmentConfig;
     tmux?: TmuxSegmentConfig;
     context?: ContextSegmentConfig;
     metrics?: MetricsSegmentConfig;

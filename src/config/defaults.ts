@@ -55,6 +55,7 @@ export const DEFAULT_CONFIG: PowerlineConfig = {
             showLinesRemoved: true,
           },
           cacheTimer: { enabled: false },
+          weeklyScoped: { enabled: false },
         },
       },
     ],
