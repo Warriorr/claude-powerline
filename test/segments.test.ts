@@ -13,20 +13,18 @@ import {
   formatCacheTimerElapsed,
   formatCacheTimerRemaining,
 } from "../src/utils/formatters";
-import {
-  loadEntriesFromProjects,
-  type ClaudeHookData,
-} from "../src/utils/claude";
+import type { ClaudeHookData } from "../src/utils/claude";
+import { loadIndexedUsageEntries } from "../src/utils/usageIndex";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
-jest.mock("../src/utils/claude", () => ({
-  loadEntriesFromProjects: jest.fn(),
+jest.mock("../src/utils/usageIndex", () => ({
+  loadIndexedUsageEntries: jest.fn(),
 }));
 
-const mockLoadEntries = loadEntriesFromProjects as jest.MockedFunction<
-  typeof loadEntriesFromProjects
+const mockLoadEntries = loadIndexedUsageEntries as jest.MockedFunction<
+  typeof loadIndexedUsageEntries
 >;
 
 describe("Segment Time Logic", () => {
@@ -49,31 +47,23 @@ describe("Segment Time Logic", () => {
     mockEntries = [
       {
         timestamp: new Date(midnight.getTime() + 2 * 60 * 60 * 1000),
-        message: {
-          usage: {
-            input_tokens: 1000,
-            output_tokens: 500,
-            cache_creation_input_tokens: 100,
-            cache_read_input_tokens: 50,
-          },
-          model: "claude-3-5-sonnet",
-        },
+        inputTokens: 1000,
+        outputTokens: 500,
+        cacheCreationInputTokens: 100,
+        cacheReadInputTokens: 50,
         costUSD: 25.5,
-        raw: {},
+        model: "claude-3-5-sonnet",
+        hash: null,
       },
       {
         timestamp: new Date(blockStart.getTime() + 60 * 60 * 1000),
-        message: {
-          usage: {
-            input_tokens: 2000,
-            output_tokens: 1000,
-            cache_creation_input_tokens: 200,
-            cache_read_input_tokens: 100,
-          },
-          model: "claude-3-5-sonnet",
-        },
+        inputTokens: 2000,
+        outputTokens: 1000,
+        cacheCreationInputTokens: 200,
+        cacheReadInputTokens: 100,
         costUSD: 45.75,
-        raw: {},
+        model: "claude-3-5-sonnet",
+        hash: null,
       },
     ];
 
@@ -97,17 +87,13 @@ describe("Segment Time Logic", () => {
 
       const currentBlockEntry = {
         timestamp: new Date(blockStart.getTime() + 60 * 60 * 1000),
-        message: {
-          usage: {
-            input_tokens: 2000,
-            output_tokens: 1000,
-            cache_creation_input_tokens: 200,
-            cache_read_input_tokens: 100,
-          },
-          model: "claude-3-5-sonnet",
-        },
+        inputTokens: 2000,
+        outputTokens: 1000,
+        cacheCreationInputTokens: 200,
+        cacheReadInputTokens: 100,
         costUSD: 45.75,
-        raw: {},
+        model: "claude-3-5-sonnet",
+        hash: null,
       };
 
       mockLoadEntries.mockResolvedValue([currentBlockEntry]);
@@ -130,17 +116,13 @@ describe("Segment Time Logic", () => {
 
       const mockEntry = {
         timestamp: new Date(blockStart.getTime() + 30 * 60 * 1000),
-        message: {
-          usage: {
-            input_tokens: 100,
-            output_tokens: 50,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0,
-          },
-          model: "claude-3-5-sonnet",
-        },
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
         costUSD: 1.0,
-        raw: {},
+        model: "claude-3-5-sonnet",
+        hash: null,
       };
 
       mockLoadEntries.mockResolvedValue([mockEntry]);
@@ -227,16 +209,10 @@ describe("Segment Time Logic", () => {
     });
 
     it("should handle entries without usage data", async () => {
-      const entriesWithoutUsage = [
-        {
-          timestamp: new Date(),
-          message: {},
-          costUSD: 0,
-          raw: {},
-        },
-      ];
-
-      mockLoadEntries.mockResolvedValue(entriesWithoutUsage);
+      // The shared index only ever stores entries that have usage data
+      // (filtering happens once, in usageIndex.ts), so a transcript with
+      // only non-usage lines surfaces here as an empty result.
+      mockLoadEntries.mockResolvedValue([]);
 
       const blockProvider = new BlockProvider();
       const blockInfo = await blockProvider.getActiveBlockInfo();

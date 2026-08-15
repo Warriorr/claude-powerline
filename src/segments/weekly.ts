@@ -1,7 +1,9 @@
 import { debug } from "../utils/logger";
-import { PricingService } from "./pricing";
 import { CacheManager } from "../utils/cache";
-import { loadEntriesFromProjects, type ParsedEntry } from "../utils/claude";
+import {
+  loadIndexedUsageEntries,
+  type IndexedUsageEntry,
+} from "../utils/usageIndex";
 import type { TokenBreakdown } from "./session";
 
 export interface WeeklyUsageEntry {
@@ -58,18 +60,17 @@ function getWeekStart(): Date {
   return weekStart;
 }
 
-function convertToWeeklyEntry(entry: ParsedEntry): WeeklyUsageEntry {
+function convertToWeeklyEntry(entry: IndexedUsageEntry): WeeklyUsageEntry {
   return {
     timestamp: entry.timestamp,
     usage: {
-      inputTokens: entry.message?.usage?.input_tokens || 0,
-      outputTokens: entry.message?.usage?.output_tokens || 0,
-      cacheCreationInputTokens:
-        entry.message?.usage?.cache_creation_input_tokens || 0,
-      cacheReadInputTokens: entry.message?.usage?.cache_read_input_tokens || 0,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      cacheCreationInputTokens: entry.cacheCreationInputTokens,
+      cacheReadInputTokens: entry.cacheReadInputTokens,
     },
-    costUSD: entry.costUSD || 0,
-    model: entry.message?.model || "unknown",
+    costUSD: entry.costUSD,
+    model: entry.model,
   };
 }
 
@@ -80,57 +81,12 @@ export class WeeklyProvider {
 
     debug(`Weekly segment: Loading entries from ${weekStartString}`);
 
-    const latestMtime = await CacheManager.getLatestTranscriptMtime();
-
-    const sharedCached = await CacheManager.getUsageCache(
-      "weekly",
-      latestMtime,
-    );
-    if (sharedCached) {
-      debug("Using shared weekly usage cache");
-      return sharedCached;
-    }
-
-    const fileFilterDate = new Date(weekStart);
-    fileFilterDate.setDate(fileFilterDate.getDate() - 1);
-
-    const fileFilter = (_filePath: string, modTime: Date): boolean => {
-      return modTime >= fileFilterDate;
-    };
-
-    const timeFilter = (entry: ParsedEntry): boolean => {
-      return entry.timestamp >= weekStart;
-    };
-
-    const parsedEntries = await loadEntriesFromProjects(
-      timeFilter,
-      fileFilter,
-      true,
-    );
-    const weeklyEntries: WeeklyUsageEntry[] = [];
-
-    let entriesFound = 0;
-
-    for (const entry of parsedEntries) {
-      if (entry.timestamp >= weekStart && entry.message?.usage) {
-        const weeklyEntry = convertToWeeklyEntry(entry);
-
-        if (!weeklyEntry.costUSD && entry.raw) {
-          weeklyEntry.costUSD = await PricingService.calculateCostForEntry(
-            entry.raw,
-          );
-        }
-
-        weeklyEntries.push(weeklyEntry);
-        entriesFound++;
-      }
-    }
+    const indexedEntries = await loadIndexedUsageEntries({ since: weekStart });
+    const weeklyEntries = indexedEntries.map(convertToWeeklyEntry);
 
     debug(
-      `Weekly segment: Found ${entriesFound} entries from ${weekStartString}`,
+      `Weekly segment: Found ${weeklyEntries.length} entries from ${weekStartString}`,
     );
-
-    await CacheManager.setUsageCache("weekly", weeklyEntries, latestMtime);
 
     return weeklyEntries;
   }

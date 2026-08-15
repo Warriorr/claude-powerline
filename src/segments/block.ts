@@ -1,7 +1,9 @@
 import { debug } from "../utils/logger";
-import { PricingService } from "./pricing";
 import { CacheManager } from "../utils/cache";
-import { loadEntriesFromProjects, type ParsedEntry } from "../utils/claude";
+import {
+  loadIndexedUsageEntries,
+  type IndexedUsageEntry,
+} from "../utils/usageIndex";
 
 export interface UsageEntry {
   timestamp: Date;
@@ -39,18 +41,17 @@ function getModelRateLimitWeight(model: string): number {
   return 1;
 }
 
-function convertToUsageEntry(entry: ParsedEntry): UsageEntry {
+function convertToUsageEntry(entry: IndexedUsageEntry): UsageEntry {
   return {
     timestamp: entry.timestamp,
     usage: {
-      inputTokens: entry.message?.usage?.input_tokens || 0,
-      outputTokens: entry.message?.usage?.output_tokens || 0,
-      cacheCreationInputTokens:
-        entry.message?.usage?.cache_creation_input_tokens || 0,
-      cacheReadInputTokens: entry.message?.usage?.cache_read_input_tokens || 0,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      cacheCreationInputTokens: entry.cacheCreationInputTokens,
+      cacheReadInputTokens: entry.cacheReadInputTokens,
     },
-    costUSD: entry.costUSD || 0,
-    model: entry.message?.model || "unknown",
+    costUSD: entry.costUSD,
+    model: entry.model,
   };
 }
 
@@ -153,34 +154,12 @@ export class BlockProvider {
     try {
       debug(`Block segment: Loading entries for dynamic session blocks`);
 
-      const dayAgo = new Date();
-      dayAgo.setDate(dayAgo.getDate() - 1);
-
-      const fileFilter = (_filePath: string, modTime: Date): boolean => {
-        return modTime >= dayAgo;
-      };
-
-      const parsedEntries = await loadEntriesFromProjects(
-        undefined,
-        fileFilter,
-        true,
-      );
-
-      const allUsageEntries: UsageEntry[] = [];
-
-      for (const entry of parsedEntries) {
-        if (entry.message?.usage) {
-          const usageEntry = convertToUsageEntry(entry);
-
-          if (!usageEntry.costUSD && entry.raw) {
-            usageEntry.costUSD = await PricingService.calculateCostForEntry(
-              entry.raw,
-            );
-          }
-
-          allUsageEntries.push(usageEntry);
-        }
-      }
+      // Only the active 5h block matters, so entries are filtered by their
+      // own timestamp rather than by which files were touched in the last
+      // 24h (the old fileFilter-based semantics).
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const indexedEntries = await loadIndexedUsageEntries({ since });
+      const allUsageEntries = indexedEntries.map(convertToUsageEntry);
 
       const sessionBlocks = this.identifySessionBlocks(allUsageEntries);
       debug(`Block segment: Found ${sessionBlocks.length} session blocks`);

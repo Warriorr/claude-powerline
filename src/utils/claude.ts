@@ -388,7 +388,7 @@ async function statFile(filePath: string): Promise<FileStat | null> {
   }
 }
 
-async function collectProjectFiles(
+export async function collectProjectFiles(
   projectPath: string,
   fileFilter?: (filePath: string, modTime: Date) => boolean,
 ): Promise<FileStat[]> {

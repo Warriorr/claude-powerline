@@ -4,11 +4,6 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { debug } from "./logger";
-import {
-  getClaudePaths,
-  findProjectPaths,
-  getFileModificationDate,
-} from "./claude";
 
 export interface CacheEntry<T> {
   data: T;
@@ -256,6 +251,43 @@ export class CacheManager {
     }
   }
 
+  /**
+   * Reads the raw per-file usage index (see src/utils/usageIndex.ts).
+   * Unlike getUsageCache, this is not a timestamp-gated snapshot: it stores
+   * one incremental record per transcript file, so it is read and written
+   * directly with no envelope or freshness check. Callers are responsible
+   * for their own content-based invalidation (mtime + size per file).
+   */
+  static async getFileIndex(): Promise<any | null> {
+    await this.ensureCacheDirectories();
+    const indexPath = path.join(this.USAGE_CACHE_DIR, "file-index.json");
+    try {
+      const content = await fs.promises.readFile(indexPath, "utf-8");
+      return JSON.parse(content);
+    } catch (error: any) {
+      if (error.code !== "ENOENT") {
+        debug(`Failed to read file index: ${error.message}`);
+      }
+      return null;
+    }
+  }
+
+  static async setFileIndex(data: any): Promise<void> {
+    await this.ensureCacheDirectories();
+    const indexPath = path.join(this.USAGE_CACHE_DIR, "file-index.json");
+    const tempPath = `${indexPath}.${process.pid}.tmp`;
+    try {
+      await fs.promises.writeFile(tempPath, JSON.stringify(data), "utf-8");
+      // Rename is atomic on the same filesystem, so concurrent readers never
+      // observe a partially written index.
+      await fs.promises.rename(tempPath, indexPath);
+      debug("[CACHE-SET] fileIndex disk index stored");
+    } catch (error) {
+      debug("Failed to save file index:", error);
+      await fs.promises.unlink(tempPath).catch(() => {});
+    }
+  }
+
   static async getTrend(key: "block" | "weekly"): Promise<number | null> {
     try {
       await this.ensureCacheDirectories();
@@ -319,38 +351,6 @@ export class CacheManager {
       await fs.promises.writeFile(trendPath, JSON.stringify(trends), "utf-8");
     } catch (error) {
       debug("Failed to save trend direction:", error);
-    }
-  }
-
-  static async getLatestTranscriptMtime(): Promise<number> {
-    try {
-      const claudePaths = getClaudePaths();
-      const projectPaths = await findProjectPaths(claudePaths);
-
-      let latestMtime = 0;
-
-      for (const projectPath of projectPaths) {
-        try {
-          const files = await fs.promises.readdir(projectPath);
-          const jsonlFiles = files.filter((file) => file.endsWith(".jsonl"));
-
-          for (const file of jsonlFiles) {
-            const filePath = path.join(projectPath, file);
-            const mtime = await getFileModificationDate(filePath);
-            if (mtime && mtime.getTime() > latestMtime) {
-              latestMtime = mtime.getTime();
-            }
-          }
-        } catch (error) {
-          debug(`Failed to read project directory ${projectPath}:`, error);
-          continue;
-        }
-      }
-
-      return latestMtime;
-    } catch (error) {
-      debug("Failed to get latest transcript mtime:", error);
-      return Date.now();
     }
   }
 }
