@@ -1,3 +1,39 @@
+# [1.22.0](https://github.com/Warriorr/claude-powerline/compare/v1.21.1...v1.22.0) (2026-08-15)
+
+### Bug Fixes
+
+* **context:** prefer native used_percentage from hook data ([7b7bad1](https://github.com/Warriorr/claude-powerline/commit/7b7bad125224fac50dfcd0ec198299779321283e))
+* **customizer:** remove weekly percentage mode UI ([759a615](https://github.com/Warriorr/claude-powerline/commit/759a615bdfb69893d0483c3664ce3be545fecac1))
+* **pricing:** use actual cache pricing from litellm and drop legacy claude-3 models ([7b0feda](https://github.com/Warriorr/claude-powerline/commit/7b0fedad8ab648c84be7ab6b65bf00e3625de8ec))
+* **renderer:** round percentage values for improved display accuracy ([99ff946](https://github.com/Warriorr/claude-powerline/commit/99ff9465c2be7c2ec9531ef4c0f4b3326e05a078))
+* **tui:** crash when custom theme has fg-only color entries ([1a355dc](https://github.com/Warriorr/claude-powerline/commit/1a355dcdd15b2d2c21db3d6ae9ac4323484546da))
+* **weekly:** align extras ordering with 5h block segment ([27a38c2](https://github.com/Warriorr/claude-powerline/commit/27a38c2f2d40af5b8ab6c645d24d7a4245fb987f))
+
+### Features
+
+* add projected usage and time-to-limit features in block and weekly segments ([b881e60](https://github.com/Warriorr/claude-powerline/commit/b881e609943b74e32db2398f5eb4a4244c4b2b8b))
+* add projected usage trend tracking for block and weekly segments ([5f9b772](https://github.com/Warriorr/claude-powerline/commit/5f9b7720c0974b5c30edb72c6cdfcb684911023e))
+* **block, weekly, renderer, cache:** implement trend direction tracking for projected usage ([46008f5](https://github.com/Warriorr/claude-powerline/commit/46008f593157ad4eadf82c043d250120b5e21aa9))
+* **cache-timer:** add cacheTimer segment with TTL autodetect and remaining mode ([ef8332c](https://github.com/Warriorr/claude-powerline/commit/ef8332c97336dac3dbc72666308f7592adc96f5d))
+* **cache:** coalesce concurrent usage fetches with a non-blocking lock ([81d1d4d](https://github.com/Warriorr/claude-powerline/commit/81d1d4df1dd93144715f8ffe70023cacd9bfb57a))
+* **colors:** add support for Windows Terminal truecolor detection ([3d35fa1](https://github.com/Warriorr/claude-powerline/commit/3d35fa1bba6ea4e69097ab40955fcef31fd875fe))
+* **customizer, renderer:** add trend arrow mode for projected usage percentages ([092e028](https://github.com/Warriorr/claude-powerline/commit/092e0289f1ce44ab38a3a3de5edb43aa15be1f37))
+* **customizer:** enhance UI with reset functionality and theme copying feature ([798e11e](https://github.com/Warriorr/claude-powerline/commit/798e11ea8d5adbd1d4e7d7b581ec3a3d361c31bc))
+* **customizer:** implement 256-color picker and enhance color management in UI ([f9fda74](https://github.com/Warriorr/claude-powerline/commit/f9fda74d642f92bfd6ab5a47e498d8f3ff62a25a))
+* enhance weekly usage segment with rate limit display and UI updates ([17e1422](https://github.com/Warriorr/claude-powerline/commit/17e1422da87c61ee89079c1b3d2f5695166f4bf1))
+* **model:** enhance model segment with speed and effort display options ([4675f35](https://github.com/Warriorr/claude-powerline/commit/4675f3533dbb67a6172a9a34519bd2278fa916cd))
+* **model:** wire effort.level and thinking.enabled from status-line stdin ([5d33392](https://github.com/Warriorr/claude-powerline/commit/5d3339295874c50955d8198047841b0a50a3a343))
+* **renderer:** add warning and critical thresholds for context left percentage ([758f20f](https://github.com/Warriorr/claude-powerline/commit/758f20fde34425c0409ba84d6834395c13032114))
+* **segments:** add weekly usage segment with per-theme colors ([252abf2](https://github.com/Warriorr/claude-powerline/commit/252abf28f35afb98684b4ee94f937624dafd20e3))
+* **weekly-scoped:** add model-scoped weekly limit segment with dynamic model name ([2310157](https://github.com/Warriorr/claude-powerline/commit/2310157d65060ac6565ac45fe29c8c7f2cdc05ed))
+* **weekly-scoped:** serve stale limits when the usage fetch fails ([f1877ee](https://github.com/Warriorr/claude-powerline/commit/f1877ee66e4189afe5003d70cb975bea881481c4))
+
+### Performance Improvements
+
+* **usage:** replace full-corpus transcript re-parse with per-file incremental index ([32007f6](https://github.com/Warriorr/claude-powerline/commit/32007f664585d261f20648ac86a8fde2135ac49e))
+
+
+
 ## [1.21.1](https://github.com/Owloops/claude-powerline/compare/v1.21.0...v1.21.1) (2026-03-23)
 
 
