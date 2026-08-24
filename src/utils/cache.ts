@@ -10,6 +10,46 @@ export interface CacheEntry<T> {
   timestamp: number;
 }
 
+/**
+ * A tmp file older than this is treated as abandoned even when a live process
+ * still owns its pid: mtime staleness deliberately wins over liveness, which
+ * is what covers pid reuse and platforms where the liveness probe is not
+ * reliable. The tradeoff is that a writer still running after this long loses
+ * its tmp, and that is safe here: a statusline render never lives anywhere
+ * near five minutes, and the worst case for one that somehow does is a single
+ * skipped index update, because its rename then fails with ENOENT and is
+ * caught like any other write error.
+ */
+export const FILE_INDEX_TMP_STALE_MS = 5 * 60 * 1000;
+
+const FILE_INDEX_TMP_PATTERN = /^file-index\.json\.(\d+)\.tmp$/;
+// Fetch lock claims write "<lock>.<pid>.tmp" and hard-link it into place, so
+// they leak the same way. The published lock file has no .tmp suffix and is
+// therefore never matched by this pattern.
+const LOCK_TMP_PATTERN = /^.+\.(\d+)\.tmp$/;
+
+function isProcessAlive(pid: number): boolean {
+  // A malformed pid parsed out of a filename must never be read as alive:
+  // process.kill would throw ERR_INVALID_ARG_TYPE, not ESRCH.
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: any) {
+    // ESRCH means the process is gone; EPERM means it is alive but owned by
+    // somebody else, so the tmp file is not ours to reclaim on pid alone.
+    return error?.code !== "ESRCH";
+  }
+}
+
+/** Owning pid encoded in a tmp filename, or null when the name does not match. */
+function tmpOwnerPid(entry: string, pattern: RegExp): number | null {
+  const match = pattern.exec(entry);
+  return match ? Number(match[1]) : null;
+}
+
 export class CacheManager {
   // Getters (not readonly fields) so tests can point the whole cache at a
   // temp directory via CLAUDE_POWERLINE_CACHE_DIR after module load.
@@ -272,10 +312,85 @@ export class CacheManager {
     }
   }
 
+  /**
+   * Removes tmp files abandoned by other processes, both the file index tmps
+   * in the usage cache and the fetch lock claim tmps in the locks directory.
+   * Either one is orphaned when a render is killed between write and publish
+   * (session exit, or a faster refresh superseding a slow one); the index is
+   * multi-MB, so those add up fast. A tmp is reclaimed when its owning process
+   * is gone OR when its mtime is past FILE_INDEX_TMP_STALE_MS, whose docstring
+   * explains why staleness is allowed to win over liveness. Best effort only:
+   * every failure is logged and ignored so a sweep can never block the write
+   * that follows it.
+   */
+  static async sweepStaleFileIndexTemps(): Promise<void> {
+    await this.sweepStaleTemps(this.USAGE_CACHE_DIR, FILE_INDEX_TMP_PATTERN);
+    await this.sweepStaleTemps(this.LOCKS_DIR, LOCK_TMP_PATTERN);
+  }
+
+  private static async sweepStaleTemps(
+    dir: string,
+    pattern: RegExp,
+  ): Promise<void> {
+    const now = Date.now();
+    let entries: string[];
+    try {
+      entries = await fs.promises.readdir(dir);
+    } catch (error: any) {
+      debug(`Failed to list ${dir} for tmp sweep: ${error?.message}`);
+      return;
+    }
+
+    const candidates = entries
+      .map((entry) => ({ entry, pid: tmpOwnerPid(entry, pattern) }))
+      .filter(
+        (candidate): candidate is { entry: string; pid: number } =>
+          candidate.pid !== null && candidate.pid !== process.pid,
+      );
+
+    for (const { entry, pid } of candidates) {
+      const tmpPath = path.join(dir, entry);
+      let expired = false;
+      try {
+        const stats = await fs.promises.lstat(tmpPath);
+        expired = now - stats.mtimeMs > FILE_INDEX_TMP_STALE_MS;
+      } catch (error: any) {
+        debug(`Failed to stat stale tmp ${entry}: ${error?.message}`);
+        continue;
+      }
+
+      if (!expired && isProcessAlive(pid)) {
+        continue;
+      }
+
+      try {
+        await fs.promises.unlink(tmpPath);
+        debug(`Removed orphaned tmp file ${entry}`);
+      } catch (error: any) {
+        if (error?.code !== "ENOENT") {
+          debug(`Failed to remove orphaned tmp ${entry}: ${error?.message}`);
+        }
+      }
+    }
+  }
+
   static async setFileIndex(data: any): Promise<void> {
     await this.ensureCacheDirectories();
+    await this.sweepStaleFileIndexTemps();
     const indexPath = path.join(this.USAGE_CACHE_DIR, "file-index.json");
     const tempPath = `${indexPath}.${process.pid}.tmp`;
+    // SIGKILL cannot be trapped, so a killed render still leaks a tmp; that
+    // case is reclaimed by the sweep above on the next write.
+    const onSigterm = (): void => {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        // Nothing to clean up, or we are already exiting: never block the exit.
+      }
+      process.removeListener("SIGTERM", onSigterm);
+      process.kill(process.pid, "SIGTERM");
+    };
+    process.on("SIGTERM", onSigterm);
     try {
       await fs.promises.writeFile(tempPath, JSON.stringify(data), "utf-8");
       // Rename is atomic on the same filesystem, so concurrent readers never
@@ -285,6 +400,8 @@ export class CacheManager {
     } catch (error) {
       debug("Failed to save file index:", error);
       await fs.promises.unlink(tempPath).catch(() => {});
+    } finally {
+      process.removeListener("SIGTERM", onSigterm);
     }
   }
 
