@@ -1,6 +1,7 @@
 import {
   mkdirSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
   appendFileSync,
   utimesSync,
@@ -22,9 +23,25 @@ jest.mock("../src/segments/pricing", () => ({
 }));
 
 // Imported after the mocks above so usageIndex picks up the mocked modules.
-import { loadIndexedUsageEntries } from "../src/utils/usageIndex";
+import {
+  loadIndexedUsageEntries,
+  resetUsageIndexMemoForTests,
+  usageIndexInternals,
+} from "../src/utils/usageIndex";
+import { CacheManager } from "../src/utils/cache";
 
 const debugMock = debug as jest.Mock;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Every statusline render is a fresh process, so the module-level index memo
+ * starts empty. Tests that render twice must clear it the same way.
+ */
+async function loadFresh(since: Date) {
+  resetUsageIndexMemoForTests();
+  return loadIndexedUsageEntries({ since });
+}
 
 function usageLine(opts: {
   timestamp: string;
@@ -87,14 +104,35 @@ describe("loadIndexedUsageEntries", () => {
     process.env.CLAUDE_POWERLINE_CACHE_DIR = cacheDir;
 
     debugMock.mockClear();
+    resetUsageIndexMemoForTests();
   });
 
   afterEach(() => {
     delete process.env.CLAUDE_CONFIG_DIR;
     delete process.env.CLAUDE_POWERLINE_CACHE_DIR;
     rmSync(tempDir, { recursive: true, force: true });
+    jest.restoreAllMocks();
     jest.clearAllMocks();
   });
+
+  function indexPath(): string {
+    return join(cacheDir, "usage", "file-index.json");
+  }
+
+  function readIndex(): {
+    version: number;
+    lastFullSweepMs: number;
+    files: Record<string, { entries: unknown[] }>;
+  } {
+    return JSON.parse(readFileSync(indexPath(), "utf-8"));
+  }
+
+  /** Pushes the recorded sweep time past the interval so the next call sweeps fully. */
+  function ageLastFullSweep(): void {
+    const index = readIndex();
+    index.lastFullSweepMs = Date.now() - 10 * 60 * 1000;
+    writeFileSync(indexPath(), JSON.stringify(index));
+  }
 
   it("parses files on first call and writes a per-file index, including subagent files", async () => {
     const now = Date.now();
@@ -125,7 +163,7 @@ describe("loadIndexedUsageEntries", () => {
     );
 
     const since = new Date(now - 24 * 60 * 60 * 1000);
-    const entries = await loadIndexedUsageEntries({ since });
+    const entries = await loadFresh(since);
 
     expect(entries).toHaveLength(2);
     const hashes = entries.map((e) => e.hash).sort();
@@ -156,10 +194,10 @@ describe("loadIndexedUsageEntries", () => {
 
     const since = new Date(now - 24 * 60 * 60 * 1000);
 
-    await loadIndexedUsageEntries({ since });
+    await loadFresh(since);
     debugMock.mockClear();
 
-    const entries = await loadIndexedUsageEntries({ since });
+    const entries = await loadFresh(since);
 
     expect(entries).toHaveLength(1);
     const summary = reuseSummaryLine();
@@ -189,7 +227,7 @@ describe("loadIndexedUsageEntries", () => {
     );
 
     const since = new Date(now - 24 * 60 * 60 * 1000);
-    const firstPass = await loadIndexedUsageEntries({ since });
+    const firstPass = await loadFresh(since);
     expect(firstPass).toHaveLength(2);
 
     appendFileSync(
@@ -204,7 +242,7 @@ describe("loadIndexedUsageEntries", () => {
     utimesSync(fileA, bumpedMtime, bumpedMtime);
 
     debugMock.mockClear();
-    const secondPass = await loadIndexedUsageEntries({ since });
+    const secondPass = await loadFresh(since);
 
     const summary = reuseSummaryLine();
     expect(summary).toMatch(/^usageIndex: 1 file\(s\) reused, 1 re-parsed/);
@@ -226,7 +264,7 @@ describe("loadIndexedUsageEntries", () => {
     writeFileSync(fileB, shared + "\n");
 
     const since = new Date(now - 24 * 60 * 60 * 1000);
-    const entries = await loadIndexedUsageEntries({ since });
+    const entries = await loadFresh(since);
 
     expect(entries).toHaveLength(1);
     expect(entries[0]!.hash).toBe("shared-msg:shared-req");
@@ -252,7 +290,7 @@ describe("loadIndexedUsageEntries", () => {
     );
 
     const since = new Date(now - 60 * 60 * 1000);
-    const entries = await loadIndexedUsageEntries({ since });
+    const entries = await loadFresh(since);
 
     expect(entries).toHaveLength(1);
     expect(entries[0]!.hash).toBe("new-msg:new-req");
@@ -273,7 +311,7 @@ describe("loadIndexedUsageEntries", () => {
     utimesSync(staleFile, staleMtime, staleMtime);
 
     const since = new Date(now - 30 * 24 * 60 * 60 * 1000);
-    const entries = await loadIndexedUsageEntries({ since });
+    const entries = await loadFresh(since);
 
     expect(entries).toHaveLength(0);
 
@@ -297,17 +335,19 @@ describe("loadIndexedUsageEntries", () => {
     );
 
     const since = new Date(now - 24 * 60 * 60 * 1000);
-    await loadIndexedUsageEntries({ since });
+    await loadFresh(since);
 
     const indexPathBefore = join(cacheDir, "usage", "file-index.json");
     const indexBefore = JSON.parse(readFileSync(indexPathBefore, "utf-8"));
     expect(indexBefore.files[fileA]).toBeDefined();
 
-    // Age the file out of the retention window.
+    // Age the file out of the retention window. Retention is only enforced on
+    // a full sweep, so push the recorded sweep time past the interval too.
     const oldMtime = new Date(now - 9 * 24 * 60 * 60 * 1000);
     utimesSync(fileA, oldMtime, oldMtime);
+    ageLastFullSweep();
 
-    await loadIndexedUsageEntries({ since });
+    await loadFresh(since);
 
     const indexAfter = JSON.parse(readFileSync(indexPathBefore, "utf-8"));
     expect(indexAfter.files[fileA]).toBeUndefined();
@@ -332,7 +372,66 @@ describe("loadIndexedUsageEntries", () => {
     );
 
     const since = new Date(now - 24 * 60 * 60 * 1000);
-    await expect(loadIndexedUsageEntries({ since })).resolves.toHaveLength(1);
+    await expect(loadFresh(since)).resolves.toHaveLength(1);
+  });
+
+  it("builds the index in memory when the lock is held and no index exists yet", async () => {
+    const now = Date.now();
+    writeFileSync(
+      join(projectDir, "session-cold.jsonl"),
+      usageLine({
+        timestamp: new Date(now - 60_000).toISOString(),
+        messageId: "msg-cold",
+        requestId: "req-cold",
+      }) + "\n",
+    );
+    mkdirSync(join(cacheDir, "locks"), { recursive: true });
+    writeFileSync(
+      join(cacheDir, "locks", "fileIndex.fetch.lock"),
+      String(process.pid),
+    );
+    const writeSpy = jest.spyOn(CacheManager, "setFileIndex");
+
+    const since = new Date(now - 24 * 60 * 60 * 1000);
+    const entries = await loadFresh(since);
+
+    expect(entries.map((e) => e.hash)).toEqual(["msg-cold:req-cold"]);
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(existsSync(indexPath())).toBe(false);
+    expect(existsSync(join(cacheDir, "locks", "fileIndex.fetch.lock"))).toBe(
+      true,
+    );
+  });
+
+  it("accepts a legacy index without lastFullSweepMs and sweeps it instead of rebuilding", async () => {
+    const now = Date.now();
+    const sessionFile = join(projectDir, "session-legacy.jsonl");
+    writeFileSync(
+      sessionFile,
+      usageLine({
+        timestamp: new Date(now - 60_000).toISOString(),
+        messageId: "msg-legacy",
+        requestId: "req-legacy",
+      }) + "\n",
+    );
+    const since = new Date(now - 24 * 60 * 60 * 1000);
+    await loadFresh(since);
+
+    // Strip the field the way a pre-#2428 index on disk looks.
+    const legacy = readIndex() as Partial<ReturnType<typeof readIndex>>;
+    delete legacy.lastFullSweepMs;
+    writeFileSync(indexPath(), JSON.stringify(legacy));
+    debugMock.mockClear();
+
+    const entries = await loadFresh(since);
+    expect(entries).toHaveLength(1);
+    expect(debugMock).toHaveBeenCalledWith(
+      expect.stringContaining("1 file(s) reused, 0 re-parsed"),
+    );
+    expect(debugMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("unknown version/shape"),
+    );
+    expect(readIndex().lastFullSweepMs).toBeGreaterThan(0);
   });
 
   it("treats an index file with an unknown version as empty instead of throwing", async () => {
@@ -354,8 +453,175 @@ describe("loadIndexedUsageEntries", () => {
     );
 
     const since = new Date(now - 24 * 60 * 60 * 1000);
-    const entries = await loadIndexedUsageEntries({ since });
+    const entries = await loadFresh(since);
     expect(entries).toHaveLength(1);
     expect(entries[0]!.hash).toBe("msg-j:req-j");
+  });
+
+  it("loads and writes the index once for concurrent callers in one process", async () => {
+    const now = Date.now();
+    const sessionFile = join(projectDir, "session-k.jsonl");
+    writeFileSync(
+      sessionFile,
+      usageLine({
+        timestamp: new Date(now - 60_000).toISOString(),
+        messageId: "msg-k",
+        requestId: "req-k",
+      }) + "\n",
+    );
+
+    const getSpy = jest.spyOn(CacheManager, "getFileIndex");
+    const setSpy = jest.spyOn(CacheManager, "setFileIndex");
+
+    const since = new Date(now - DAY_MS);
+    resetUsageIndexMemoForTests();
+    const [first, second] = await Promise.all([
+      loadIndexedUsageEntries({ since }),
+      loadIndexedUsageEntries({ since }),
+    ]);
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves the on-disk index untouched when another render holds the lock", async () => {
+    const now = Date.now();
+    mkdirSync(join(cacheDir, "usage"), { recursive: true });
+    mkdirSync(join(cacheDir, "locks"), { recursive: true });
+
+    // Deliberately absent from disk: proof that nothing was stat'ed or parsed.
+    const ghostFile = join(projectDir, "session-ghost.jsonl");
+    writeFileSync(
+      indexPath(),
+      JSON.stringify({
+        version: 1,
+        lastFullSweepMs: 0,
+        files: {
+          [ghostFile]: {
+            mtimeMs: now,
+            size: 10,
+            entries: [
+              {
+                timestamp: now - 60_000,
+                inputTokens: 1,
+                outputTokens: 2,
+                cacheCreationInputTokens: 0,
+                cacheReadInputTokens: 0,
+                costUSD: 0.5,
+                model: "claude-sonnet-4-5",
+                hash: "locked-msg:locked-req",
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const lockFile = join(cacheDir, "locks", "fileIndex.fetch.lock");
+    writeFileSync(lockFile, String(process.pid));
+
+    const statSpy = jest.spyOn(usageIndexInternals, "stat");
+    const setSpy = jest.spyOn(CacheManager, "setFileIndex");
+
+    const entries = await loadFresh(new Date(now - DAY_MS));
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.hash).toBe("locked-msg:locked-req");
+    expect(statSpy).not.toHaveBeenCalled();
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(existsSync(lockFile)).toBe(true);
+  });
+
+  it("stats only recently touched files while the project directory is unchanged", async () => {
+    const now = Date.now();
+    const oldFile = join(projectDir, "session-old.jsonl");
+    const recentFile = join(projectDir, "session-recent.jsonl");
+    writeFileSync(
+      oldFile,
+      usageLine({
+        timestamp: new Date(now - 8 * 60 * 60 * 1000).toISOString(),
+        messageId: "msg-old",
+        requestId: "req-old",
+      }) + "\n",
+    );
+    writeFileSync(
+      recentFile,
+      usageLine({
+        timestamp: new Date(now - 60_000).toISOString(),
+        messageId: "msg-recent",
+        requestId: "req-recent",
+      }) + "\n",
+    );
+    const oldMtime = new Date(now - 8 * 60 * 60 * 1000);
+    utimesSync(oldFile, oldMtime, oldMtime);
+
+    const since = new Date(now - 30 * DAY_MS);
+    await loadFresh(since);
+
+    // Freeze the directory in the past so the quick sweep sees no new files.
+    const dirMtime = new Date(now - 60_000);
+    utimesSync(projectDir, dirMtime, dirMtime);
+
+    const statSpy = jest.spyOn(usageIndexInternals, "stat");
+    await loadFresh(since);
+
+    const statted = statSpy.mock.calls.map((call) => call[0]);
+    expect(statted).toContain(recentFile);
+    expect(statted).not.toContain(oldFile);
+    statSpy.mockRestore();
+
+    // A new transcript moves the directory mtime, so it is re-read.
+    const newFile = join(projectDir, "session-new.jsonl");
+    writeFileSync(
+      newFile,
+      usageLine({
+        timestamp: new Date(now - 30_000).toISOString(),
+        messageId: "msg-new",
+        requestId: "req-new",
+      }) + "\n",
+    );
+
+    const entries = await loadFresh(since);
+    expect(entries.map((e) => e.hash)).toContain("msg-new:req-new");
+  });
+
+  it("drops a file deleted from disk on the next full sweep", async () => {
+    const now = Date.now();
+    const fileA = join(projectDir, "session-l.jsonl");
+    const fileB = join(projectDir, "session-m.jsonl");
+    writeFileSync(
+      fileA,
+      usageLine({
+        timestamp: new Date(now - 60_000).toISOString(),
+        messageId: "msg-l",
+        requestId: "req-l",
+      }) + "\n",
+    );
+    writeFileSync(
+      fileB,
+      usageLine({
+        timestamp: new Date(now - 60_000).toISOString(),
+        messageId: "msg-m",
+        requestId: "req-m",
+      }) + "\n",
+    );
+
+    const since = new Date(now - DAY_MS);
+    await loadFresh(since);
+    expect(readIndex().files[fileA]).toBeDefined();
+
+    unlinkSync(fileA);
+
+    // Within the interval the deletion is invisible: the record survives.
+    const quickPass = await loadFresh(since);
+    expect(quickPass.map((e) => e.hash)).toContain("msg-l:req-l");
+
+    ageLastFullSweep();
+    const fullPass = await loadFresh(since);
+
+    expect(readIndex().files[fileA]).toBeUndefined();
+    expect(fullPass.map((e) => e.hash)).toEqual(["msg-m:req-m"]);
   });
 });

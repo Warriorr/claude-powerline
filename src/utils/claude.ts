@@ -377,12 +377,16 @@ async function parseJsonlFileStreaming(
   });
 }
 
-type FileStat = { filePath: string; mtime: Date };
+type FileStat = { filePath: string; mtime: Date; size: number };
 
+/**
+ * One stat per file: callers that need the size for change detection get it
+ * here rather than stat-ing the same file a second time.
+ */
 async function statFile(filePath: string): Promise<FileStat | null> {
   try {
-    const mtime = await getFileModificationDate(filePath);
-    return mtime ? { filePath, mtime } : null;
+    const stats = await stat(filePath);
+    return { filePath, mtime: stats.mtime, size: stats.size };
   } catch {
     return null;
   }
@@ -452,9 +456,7 @@ export async function loadEntriesFromProjects(
   );
 
   const allFileResults = await Promise.all(allFilesPromises);
-  const allFilesWithMtime = allFileResults
-    .flat()
-    .filter((file): file is { filePath: string; mtime: Date } => file !== null);
+  const allFilesWithMtime = allFileResults.flat();
 
   if (sortFiles) {
     allFilesWithMtime.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
