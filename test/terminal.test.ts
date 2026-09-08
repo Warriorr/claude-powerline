@@ -1,4 +1,11 @@
-import { stripAnsi, visibleLength } from "../src/utils/terminal";
+import {
+  stripAnsi,
+  visibleLength,
+  parseProcStat,
+  ttyPathFromTtyNr,
+  findParentTtyFromProc,
+  getTerminalWidth,
+} from "../src/utils/terminal";
 import { PowerlineRenderer } from "../src/powerline";
 import { DEFAULT_CONFIG } from "../src/config/defaults";
 import type { PowerlineConfig } from "../src/config/loader";
@@ -166,5 +173,109 @@ describe("autoWrap functionality", () => {
         expect(stripAnsi(line).trim().length).toBeGreaterThan(0);
       }
     });
+  });
+});
+
+describe("proc-based tty discovery", () => {
+  describe("parseProcStat", () => {
+    it("should parse ppid and ttyNr when comm contains spaces and parens", () => {
+      const line =
+        "12345 (my (odd) prog) S 6789 12345 12345 34817 12345 4194304 1234 0 0 0";
+      expect(parseProcStat(line)).toEqual({ ppid: 6789, ttyNr: 34817 });
+    });
+
+    it("should parse a plain stat line", () => {
+      const line = "42 (node) S 1 42 42 0 -1 4194304 900 0 0 0";
+      expect(parseProcStat(line)).toEqual({ ppid: 1, ttyNr: 0 });
+    });
+
+    it("should return null for malformed input", () => {
+      expect(parseProcStat("not a stat line")).toBeNull();
+      expect(parseProcStat("")).toBeNull();
+    });
+  });
+
+  describe("ttyPathFromTtyNr", () => {
+    it("should decode major 136 pty devices", () => {
+      expect(ttyPathFromTtyNr(34817)).toBe("/dev/pts/1");
+    });
+
+    it("should decode major 137 pty devices with the 256 offset", () => {
+      expect(ttyPathFromTtyNr((137 << 8) | 5)).toBe("/dev/pts/261");
+    });
+
+    it("should decode high minor bits stored above bit 20", () => {
+      expect(ttyPathFromTtyNr(0x10882c)).toBe("/dev/pts/300");
+    });
+
+    it("should decode virtual consoles on major 4", () => {
+      expect(ttyPathFromTtyNr((4 << 8) | 1)).toBe("/dev/tty1");
+    });
+
+    it("should decode serial consoles on major 4", () => {
+      expect(ttyPathFromTtyNr((4 << 8) | 64)).toBe("/dev/ttyS0");
+    });
+
+    it("should return null when there is no controlling terminal", () => {
+      expect(ttyPathFromTtyNr(0)).toBeNull();
+    });
+
+    it("should return null for an unknown major", () => {
+      expect(ttyPathFromTtyNr((5 << 8) | 3)).toBeNull();
+    });
+  });
+
+  describe("findParentTtyFromProc", () => {
+    it("should walk up parents until a tty is found", () => {
+      const stats: Record<number, string> = {
+        100: "100 (node) S 90 100 100 0 -1 4194304 1 0 0 0",
+        90: "90 (sh) S 80 90 90 0 -1 4194304 1 0 0 0",
+        80: "80 (wezterm) S 1 80 80 34817 -1 4194304 1 0 0 0",
+      };
+      const read = (pid: number) => stats[pid] ?? null;
+      expect(findParentTtyFromProc(100, read)).toBe("/dev/pts/1");
+    });
+
+    it("should stop at init without a tty", () => {
+      const stats: Record<number, string> = {
+        100: "100 (node) S 1 100 100 0 -1 4194304 1 0 0 0",
+        1: "1 (systemd) S 0 1 1 0 -1 4194304 1 0 0 0",
+      };
+      const read = (pid: number) => stats[pid] ?? null;
+      expect(findParentTtyFromProc(100, read)).toBeNull();
+    });
+
+    it("should return null when /proc is unreadable", () => {
+      expect(findParentTtyFromProc(100, () => null)).toBeNull();
+    });
+
+    it("should not loop forever on a cyclic parent chain", () => {
+      const read = (pid: number) =>
+        `${pid} (a) S ${pid} ${pid} ${pid} 0 -1 4194304 1 0 0 0`;
+      expect(findParentTtyFromProc(100, read)).toBeNull();
+    });
+  });
+});
+
+describe("getTerminalWidth", () => {
+  const originalColumns = process.env.COLUMNS;
+
+  afterEach(() => {
+    if (originalColumns === undefined) {
+      delete process.env.COLUMNS;
+    } else {
+      process.env.COLUMNS = originalColumns;
+    }
+  });
+
+  it("should honor COLUMNS first and apply the 70% reserve", () => {
+    process.env.COLUMNS = "200";
+    expect(getTerminalWidth()).toBe(140);
+  });
+
+  it("should ignore an invalid COLUMNS value", () => {
+    process.env.COLUMNS = "nonsense";
+    const width = getTerminalWidth();
+    expect(width === null || width > 0).toBe(true);
   });
 });
