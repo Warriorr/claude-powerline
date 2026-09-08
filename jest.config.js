@@ -9,5 +9,6 @@ export default {
       useESM: true
     }],
   },
+  setupFiles: ["<rootDir>/test/setup-env.ts"],
   testTimeout: 30000,
 };
