@@ -140,6 +140,45 @@ describe("CacheManager tmp file sweeping", () => {
     await expect(CacheManager.getFileIndex()).resolves.toEqual(data);
   });
 
+  it("removes an orphaned tmp belonging to any usage document, not just the file index", async () => {
+    const orphan = writeAged(usageDir, `usage-index.json.${DEAD_PID}.tmp`, 0);
+    const hashesOrphan = writeAged(
+      usageDir,
+      `folded-hashes.json.${DEAD_PID}.tmp`,
+      0,
+    );
+
+    await CacheManager.sweepStaleFileIndexTemps();
+
+    expect(fs.existsSync(orphan)).toBe(false);
+    expect(fs.existsSync(hashesOrphan)).toBe(false);
+  });
+
+  it("publishes a named usage document and reads it back", async () => {
+    const data = { version: 2, buckets: { "1|0": [1, 2, 3] } };
+
+    await CacheManager.setUsageDocument("usage-index", data);
+
+    const files = fs.readdirSync(usageDir);
+    expect(files.filter((f) => f === "usage-index.json")).toHaveLength(1);
+    expect(files.filter((f) => f.endsWith(".tmp"))).toHaveLength(0);
+    await expect(CacheManager.getUsageDocument("usage-index")).resolves.toEqual(
+      data,
+    );
+  });
+
+  it("removes a named usage document and tolerates a missing one", async () => {
+    await CacheManager.setUsageDocument("folded-hashes", { version: 2 });
+    expect(fs.existsSync(join(usageDir, "folded-hashes.json"))).toBe(true);
+
+    await CacheManager.removeUsageDocument("folded-hashes");
+    expect(fs.existsSync(join(usageDir, "folded-hashes.json"))).toBe(false);
+
+    await expect(
+      CacheManager.removeUsageDocument("folded-hashes"),
+    ).resolves.toBeUndefined();
+  });
+
   it("tolerates a missing usage cache directory", async () => {
     process.env.CLAUDE_POWERLINE_CACHE_DIR = join(tempDir, "does-not-exist");
 
@@ -189,5 +228,16 @@ describe("CacheManager tmp file sweeping", () => {
 
     expect(during).toBe(before + 1);
     expect(process.listenerCount("SIGTERM")).toBe(before);
+  });
+  it("rejects document names that could escape the usage cache dir", async () => {
+    await expect(CacheManager.getUsageDocument("../../escape")).rejects.toThrow(
+      "Invalid usage document name",
+    );
+    await expect(
+      CacheManager.setUsageDocument("a/b", { x: 1 }),
+    ).rejects.toThrow("Invalid usage document name");
+    await expect(CacheManager.removeUsageDocument("a.json")).rejects.toThrow(
+      "Invalid usage document name",
+    );
   });
 });

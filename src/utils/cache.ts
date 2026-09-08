@@ -22,7 +22,20 @@ export interface CacheEntry<T> {
  */
 export const FILE_INDEX_TMP_STALE_MS = 5 * 60 * 1000;
 
-const FILE_INDEX_TMP_PATTERN = /^file-index\.json\.(\d+)\.tmp$/;
+// Any usage document tmp, not just the file index one: the usage cache holds
+// several named documents (usage-index.json, folded-hashes.json, ...) and each
+// leaks a tmp the same way when its writer is killed mid publish.
+const USAGE_DOCUMENT_TMP_PATTERN = /^[\w.-]+\.json\.(\d+)\.tmp$/;
+// Document names are compile-time literals today; the guard keeps a future
+// caller from ever turning a path component into a name that escapes the
+// usage cache dir through path.join.
+const USAGE_DOCUMENT_NAME_PATTERN = /^[\w-]+$/;
+
+function assertValidDocumentName(name: string): void {
+  if (!USAGE_DOCUMENT_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid usage document name: ${name}`);
+  }
+}
 // Fetch lock claims write "<lock>.<pid>.tmp" and hard-link it into place, so
 // they leak the same way. The published lock file has no .tmp suffix and is
 // therefore never matched by this pattern.
@@ -292,24 +305,43 @@ export class CacheManager {
   }
 
   /**
-   * Reads the raw per-file usage index (see src/utils/usageIndex.ts).
-   * Unlike getUsageCache, this is not a timestamp-gated snapshot: it stores
-   * one incremental record per transcript file, so it is read and written
-   * directly with no envelope or freshness check. Callers are responsible
-   * for their own content-based invalidation (mtime + size per file).
+   * Reads one named usage document, `<name>.json` in the usage cache dir
+   * (see src/utils/usageIndex.ts). Unlike getUsageCache these are not
+   * timestamp-gated snapshots: they hold incremental state, so they are read
+   * and written directly with no envelope or freshness check. Callers are
+   * responsible for their own content-based invalidation.
    */
-  static async getFileIndex(): Promise<any | null> {
+  static async getUsageDocument(name: string): Promise<any | null> {
+    assertValidDocumentName(name);
     await this.ensureCacheDirectories();
-    const indexPath = path.join(this.USAGE_CACHE_DIR, "file-index.json");
+    const documentPath = path.join(this.USAGE_CACHE_DIR, `${name}.json`);
     try {
-      const content = await fs.promises.readFile(indexPath, "utf-8");
+      const content = await fs.promises.readFile(documentPath, "utf-8");
       return JSON.parse(content);
     } catch (error: any) {
       if (error.code !== "ENOENT") {
-        debug(`Failed to read file index: ${error.message}`);
+        debug(`Failed to read usage document ${name}: ${error.message}`);
       }
       return null;
     }
+  }
+
+  /** Deletes one named usage document. Missing files are not an error. */
+  static async removeUsageDocument(name: string): Promise<void> {
+    assertValidDocumentName(name);
+    const documentPath = path.join(this.USAGE_CACHE_DIR, `${name}.json`);
+    try {
+      await fs.promises.unlink(documentPath);
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") {
+        debug(`Failed to remove usage document ${name}: ${error?.message}`);
+      }
+    }
+  }
+
+  /** @deprecated Kept for the version 1 index path; use getUsageDocument. */
+  static async getFileIndex(): Promise<any | null> {
+    return this.getUsageDocument("file-index");
   }
 
   /**
@@ -324,7 +356,10 @@ export class CacheManager {
    * that follows it.
    */
   static async sweepStaleFileIndexTemps(): Promise<void> {
-    await this.sweepStaleTemps(this.USAGE_CACHE_DIR, FILE_INDEX_TMP_PATTERN);
+    await this.sweepStaleTemps(
+      this.USAGE_CACHE_DIR,
+      USAGE_DOCUMENT_TMP_PATTERN,
+    );
     await this.sweepStaleTemps(this.LOCKS_DIR, LOCK_TMP_PATTERN);
   }
 
@@ -374,10 +409,16 @@ export class CacheManager {
     }
   }
 
-  static async setFileIndex(data: any): Promise<void> {
+  /**
+   * Publishes one named usage document atomically: write a pid-tagged tmp
+   * next to it, then rename. A SIGTERM during the write unlinks the tmp so a
+   * killed render leaves nothing behind.
+   */
+  static async setUsageDocument(name: string, data: any): Promise<void> {
+    assertValidDocumentName(name);
     await this.ensureCacheDirectories();
     await this.sweepStaleFileIndexTemps();
-    const indexPath = path.join(this.USAGE_CACHE_DIR, "file-index.json");
+    const indexPath = path.join(this.USAGE_CACHE_DIR, `${name}.json`);
     const tempPath = `${indexPath}.${process.pid}.tmp`;
     // SIGKILL cannot be trapped, so a killed render still leaks a tmp; that
     // case is reclaimed by the sweep above on the next write.
@@ -396,13 +437,18 @@ export class CacheManager {
       // Rename is atomic on the same filesystem, so concurrent readers never
       // observe a partially written index.
       await fs.promises.rename(tempPath, indexPath);
-      debug("[CACHE-SET] fileIndex disk index stored");
+      debug(`[CACHE-SET] ${name} usage document stored`);
     } catch (error) {
-      debug("Failed to save file index:", error);
+      debug(`Failed to save usage document ${name}:`, error);
       await fs.promises.unlink(tempPath).catch(() => {});
     } finally {
       process.removeListener("SIGTERM", onSigterm);
     }
+  }
+
+  /** @deprecated Kept for the version 1 index path; use setUsageDocument. */
+  static async setFileIndex(data: any): Promise<void> {
+    await this.setUsageDocument("file-index", data);
   }
 
   static async getTrend(key: "block" | "weekly"): Promise<number | null> {
