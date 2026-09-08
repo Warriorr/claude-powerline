@@ -1,3 +1,15 @@
+## [1.22.1](https://github.com/Warriorr/claude-powerline/compare/v1.22.0...v1.22.1) (2026-09-08)
+
+### Bug Fixes
+
+* **cache:** sweep orphaned tmp files and unlink in-flight index tmp on SIGTERM ([5d38522](https://github.com/Warriorr/claude-powerline/commit/5d38522adefc8fb240d332ea822e3229ee010284))
+
+### Performance Improvements
+
+* **terminal:** find the terminal width via /proc instead of forking ps per hop ([cffd976](https://github.com/Warriorr/claude-powerline/commit/cffd9766a2b29918209e7cd88f7a730e32859138))
+* **usage:** load the index once per render, never wait for the lock, stat only what can change ([9e53dfa](https://github.com/Warriorr/claude-powerline/commit/9e53dfae68d7878662a5c08ff6f344b082ebc048))
+* **usage:** replace the per-message index with 15-minute buckets plus a 26 h hot window ([9ba72dc](https://github.com/Warriorr/claude-powerline/commit/9ba72dc1e5e2a8e1c857a694ddd40f217a627365))
+
 # [1.22.0](https://github.com/Warriorr/claude-powerline/compare/v1.21.1...v1.22.0) (2026-08-15)
 
 ### Bug Fixes
