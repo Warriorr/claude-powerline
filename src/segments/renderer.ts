@@ -823,7 +823,11 @@ export class SegmentRenderer {
               ),
             );
             const pct = pctMode === "used" ? 100 - leftPct : leftPct;
-            extras.push(pctMode === "used" ? `${pct}% spent` : `${pct}% left`);
+            // No quota was reported, so this is only the clock: never word it
+            // like the API-reported percentage above.
+            extras.push(
+              pctMode === "used" ? `${pct}% elapsed` : `${pct}% time left`,
+            );
           }
         }
 

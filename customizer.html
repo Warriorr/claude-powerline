@@ -532,7 +532,7 @@ const SEGMENT_DEFS = {
             <option value="left" ${(s.percentageMode||'left')==='left'?'selected':''}>left</option>
             <option value="used" ${s.percentageMode==='used'?'selected':''}>spent</option>
           </select>
-          <p class="hint">left: "38% left" · spent: "62% spent" — uses API-reported quota when available (requires Claude.ai Pro/Max + Claude Code ≥ 2.1.80), otherwise falls back to time-based estimate</p>
+          <p class="hint">left: "38% left" · spent: "62% spent" — uses API-reported quota when available (requires Claude.ai Pro/Max + Claude Code ≥ 2.1.80), otherwise shows time instead ("20% time left" · "80% elapsed")</p>
         </div>
         <div class="toggle-row" style="margin-top:8px">
           <label>Show projected usage % <span class="new-badge">NEW</span> <span style="color:var(--text2);font-size:0.72rem">(experimental)</span></label>

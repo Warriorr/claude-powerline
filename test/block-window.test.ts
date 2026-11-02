@@ -1,7 +1,9 @@
 import {
   BlockProvider,
   FIVE_HOUR_WINDOW_DOCUMENT,
+  type BlockInfo,
 } from "../src/segments/block";
+import { SegmentRenderer } from "../src/segments/renderer";
 import { PowerlineRenderer } from "../src/powerline";
 import { CacheManager } from "../src/utils/cache";
 import type { ClaudeHookData } from "../src/utils/claude";
@@ -36,6 +38,53 @@ function renderer(style: "powerline" | "tui"): PowerlineRenderer {
     },
   } as ConstructorParameters<typeof PowerlineRenderer>[0]);
 }
+
+describe("block percentage label", () => {
+  const segmentRenderer = new SegmentRenderer(
+    { theme: "dark", display: { style: "minimal" } } as never,
+    {} as never,
+  );
+
+  function renderPercentage(
+    rateLimitPercentage: number | null,
+    percentageMode: "left" | "used",
+  ): string {
+    const info: BlockInfo = {
+      cost: 1,
+      tokens: 1000,
+      weightedTokens: 1000,
+      timeRemaining: 60,
+      timeElapsed: 240,
+      burnRate: null,
+      tokenBurnRate: null,
+      rateLimitPercentage,
+      resetsAt: null,
+      projectedUsagePercentage: null,
+      projectedUsageTrend: null,
+      lastNonFlatTrend: null,
+      minutesToLimit: null,
+    };
+    return segmentRenderer.renderBlock(info, {} as never, {
+      enabled: true,
+      type: "tokens",
+      showPercentage: true,
+      percentageMode,
+    }).text;
+  }
+
+  it("says spent or left only for quota the API reported", () => {
+    expect(renderPercentage(40, "used")).toContain("40% spent");
+    expect(renderPercentage(40, "left")).toContain("60% left");
+  });
+
+  it("labels the fallback as time, not quota", () => {
+    const used = renderPercentage(null, "used");
+    expect(used).toContain("80% elapsed");
+    expect(used).not.toContain("spent");
+
+    expect(renderPercentage(null, "left")).toContain("20% time left");
+  });
+});
 
 describe("5-hour window detection", () => {
   beforeEach(async () => {
