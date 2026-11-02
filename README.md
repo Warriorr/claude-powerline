@@ -458,6 +458,8 @@ Configure context window limits for different model types. Defaults to 200K toke
 
 **Weighted Tokens:** Opus tokens count 5x toward rate limits compared to Sonnet/Haiku tokens
 
+**No 5-hour limit:** The segment hides itself when Claude Code reports rate limits without a 5-hour window, either because the plan has no such limit or because the current window has reset. It returns as soon as a window is reported again. The TUI's burn rate is measured over the same window, so it hides too.
+
 **Symbols:** `◱` Block (unicode) • `B` Block (text)
 
 </details>

@@ -186,9 +186,7 @@ export class PowerlineRenderer {
       : null;
 
     const blockInfo = this.needsSegmentInfo("block")
-      ? await this.blockProvider.getActiveBlockInfo(
-          hookData.rate_limits?.five_hour,
-        )
+      ? await this.blockProvider.getBlockInfo(hookData.rate_limits)
       : null;
 
     const todayInfo = this.needsSegmentInfo("today")
@@ -364,7 +362,7 @@ export class PowerlineRenderer {
 
     const results = await Promise.allSettled([
       this.usageProvider.getUsageInfo(hookData.session_id, hookData),
-      this.blockProvider.getActiveBlockInfo(hookData.rate_limits?.five_hour),
+      this.blockProvider.getBlockInfo(hookData.rate_limits),
       this.todayProvider.getTodayInfo(),
       this.contextProvider.getContextInfo(hookData, autocompactBuffer),
       this.metricsProvider.getMetricsInfo(hookData.session_id, hookData),

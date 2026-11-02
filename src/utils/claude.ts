@@ -47,7 +47,7 @@ export interface ClaudeHookData {
     five_hour?: {
       used_percentage: number;
       resets_at: number;
-    };
+    } | null;
     seven_day?: {
       used_percentage: number;
       resets_at: number;

@@ -1,9 +1,13 @@
 import { debug } from "../utils/logger";
 import { CacheManager } from "../utils/cache";
+import type { ClaudeHookData } from "../utils/claude";
 import {
   loadIndexedUsageEntries,
   type IndexedUsageEntry,
 } from "../utils/usageIndex";
+
+/** Remembers whether the last reported rate limits had a five_hour window. */
+export const FIVE_HOUR_WINDOW_DOCUMENT = "five-hour-window";
 
 export interface UsageEntry {
   timestamp: Date;
@@ -189,6 +193,50 @@ export class BlockProvider {
       debug("Error loading block entries:", error);
       return [];
     }
+  }
+
+  /**
+   * Whether a 5-hour window exists to report on. Claude Code sends
+   * `rate_limits` only after a session's first API response and leaves out any
+   * window the plan does not have or whose reset time has passed, so a report
+   * without `five_hour` means there is no window right now. With no report at
+   * all this render cannot tell, so the last observation decides: that keeps a
+   * plan without the limit from flashing the segment at every session start,
+   * while sessions that never get a report (API keys) keep the local block.
+   */
+  private async hasFiveHourWindow(
+    rateLimits: ClaudeHookData["rate_limits"],
+  ): Promise<boolean> {
+    const reported = rateLimits ? Boolean(rateLimits.five_hour) : null;
+    try {
+      const stored = await CacheManager.getUsageDocument(
+        FIVE_HOUR_WINDOW_DOCUMENT,
+      );
+      const lastSeen =
+        typeof stored?.present === "boolean" ? stored.present : null;
+      if (reported === null) {
+        return lastSeen !== false;
+      }
+      if (reported !== lastSeen) {
+        await CacheManager.setUsageDocument(FIVE_HOUR_WINDOW_DOCUMENT, {
+          present: reported,
+        });
+      }
+    } catch (error) {
+      debug("Failed to access the 5-hour window observation:", error);
+    }
+    return reported ?? true;
+  }
+
+  /** Block info for this render, or null when there is no 5-hour window. */
+  async getBlockInfo(
+    rateLimits: ClaudeHookData["rate_limits"],
+  ): Promise<BlockInfo | null> {
+    if (!(await this.hasFiveHourWindow(rateLimits))) {
+      debug("Block segment: No 5-hour window reported, hiding");
+      return null;
+    }
+    return this.getActiveBlockInfo(rateLimits?.five_hour ?? undefined);
   }
 
   async getActiveBlockInfo(rateLimits?: {
