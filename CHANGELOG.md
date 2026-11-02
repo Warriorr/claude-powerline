@@ -1,3 +1,10 @@
+## [1.22.2](https://github.com/Warriorr/claude-powerline/compare/v1.22.1...v1.22.2) (2026-11-02)
+
+### Bug Fixes
+
+* **block:** hide the segment when no 5-hour window is reported ([e337371](https://github.com/Warriorr/claude-powerline/commit/e337371f02e9f88729caa55fbc0286618c34e4f8))
+* **block:** label the time-based percentage as time, not quota ([98bc0e2](https://github.com/Warriorr/claude-powerline/commit/98bc0e2ad6a74e14145ce3904d7d820cdb873a8a))
+
 ## [1.22.1](https://github.com/Warriorr/claude-powerline/compare/v1.22.0...v1.22.1) (2026-09-08)
 
 ### Bug Fixes
