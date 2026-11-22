@@ -218,6 +218,8 @@ describe("loadIndexedUsageEntries", () => {
         size: number;
         foldedUpToMs: number;
         parsedOffset?: number;
+        parseCapped?: boolean;
+        forkCheckPending?: boolean;
       }
     >;
     hot: Record<string, Array<[number, ...unknown[]]>>;
@@ -1273,7 +1275,11 @@ describe("loadIndexedUsageEntries", () => {
         );
         parseSpy.mockClear();
         await loadFresh(since);
-        expect(parseSpy).toHaveBeenCalledWith(fileA, sizeBefore);
+        expect(parseSpy).toHaveBeenCalledWith(
+          fileA,
+          sizeBefore,
+          usageIndexInternals.parseChunkBytes,
+        );
       }
       parseSpy.mockRestore();
 
@@ -1338,6 +1344,7 @@ describe("loadIndexedUsageEntries", () => {
       expect(parseSpy).toHaveBeenCalledWith(
         sessionFile,
         Buffer.byteLength(first) + 1,
+        usageIndexInternals.parseChunkBytes,
       );
       expect(hotHashes(sessionFile)).toEqual([
         "m-l1:r-l1",
@@ -1368,6 +1375,7 @@ describe("loadIndexedUsageEntries", () => {
       expect(parseSpy).toHaveBeenCalledWith(
         sessionFile,
         Buffer.byteLength(first) + 1,
+        usageIndexInternals.parseChunkBytes,
       );
       expect(hotHashes(sessionFile)).toEqual([
         "m-o1:r-o1",
@@ -1457,5 +1465,237 @@ describe("loadIndexedUsageEntries", () => {
       expect(readIndex().lastFullSweepMs).toBeGreaterThan(0);
       expect(entries).toHaveLength(3);
     });
+  });
+  describe("chunked bootstrap", () => {
+    const defaultChunkBytes = usageIndexInternals.parseChunkBytes;
+    const defaultBudgetMs = usageIndexInternals.parseBudgetMs;
+    // The reader works in 64 KB reads, so a 1 byte cap stops each parse
+    // after its first read: a file of a few hundred KB takes several chunks.
+    const TINY_CHUNK_BYTES = 1;
+    let now: number;
+    let since: Date;
+
+    beforeEach(() => {
+      now = Date.now();
+      since = new Date(now - DAY_MS);
+    });
+
+    afterEach(() => {
+      usageIndexInternals.parseChunkBytes = defaultChunkBytes;
+      usageIndexInternals.parseBudgetMs = defaultBudgetMs;
+    });
+
+    /** Every fourth line repeats the one before it, as streaming does. */
+    function manySpecs(
+      file: string,
+      prefix: string,
+      count: number,
+      startMs: number,
+    ): LineSpec[] {
+      return Array.from({ length: count }, (_, i) => {
+        const id = i % 4 === 3 ? i - 1 : i;
+        return {
+          file,
+          timestampMs: startMs + i * 1_000,
+          messageId: `m-${prefix}-${id}`,
+          requestId: `r-${prefix}-${id}`,
+          inputTokens: 1 + (i % 7),
+          outputTokens: 2 + (i % 5),
+        };
+      });
+    }
+
+    /** Renders until a full sweep lands after `afterMs`; returns the renders. */
+    async function renderUntilSwept(
+      sinceDate: Date,
+      afterMs: number,
+      onDeferred: (index: StoredIndex) => void = () => {},
+    ) {
+      for (let renders = 1; renders <= 20; renders++) {
+        const entries = await loadFresh(sinceDate);
+        const index = readIndex();
+        if (index.lastFullSweepMs > afterMs) return { renders, entries };
+        onDeferred(index);
+      }
+      throw new Error("the full sweep never completed");
+    }
+
+    function expectSameTotals(
+      entries: Array<Record<string, any>>,
+      expected: { inputTokens: number; outputTokens: number; costUSD: number },
+    ): void {
+      const actual = sumEntries(entries);
+      expect(actual.inputTokens).toBe(expected.inputTokens);
+      expect(actual.outputTokens).toBe(expected.outputTokens);
+      expect(actual.costUSD).toBeCloseTo(expected.costUSD, 10);
+    }
+
+    it("bootstraps a file several chunks long across renders and matches a one-shot build", async () => {
+      const bigFile = join(projectDir, "session-chunked.jsonl");
+      const specs = manySpecs(bigFile, "big", 1200, now - 20 * 60 * 60 * 1000);
+      writeSpecs(specs);
+      const size = statSync(bigFile).size;
+      usageIndexInternals.parseChunkBytes = TINY_CHUNK_BYTES;
+
+      const offsets: number[] = [];
+      const { renders, entries } = await renderUntilSwept(since, 0, (index) => {
+        const record = index.files[bigFile]!;
+        expect(record.parsedOffset).toBeLessThan(size);
+        expect(record.parseCapped).toBe(true);
+        expect(index.lastFullSweepMs).toBe(0);
+        offsets.push(record.parsedOffset!);
+      });
+
+      expect(renders).toBeGreaterThanOrEqual(3);
+      expect([...offsets].sort((a, b) => a - b)).toEqual(offsets);
+      expect(new Set(offsets).size).toBe(offsets.length);
+      const done = readIndex().files[bigFile]!;
+      expect(done.parsedOffset).toBe(size);
+      expect(done.parseCapped).toBeUndefined();
+      expect(done.forkCheckPending).toBeUndefined();
+
+      const expected = bruteForce(specs, since.getTime());
+      expect(readIndex().hot[bigFile]).toHaveLength(expected.count);
+      expectSameTotals(entries, expected);
+
+      usageIndexInternals.parseChunkBytes = defaultChunkBytes;
+      rmSync(join(cacheDir, "usage"), { recursive: true, force: true });
+      const scratch = await loadFresh(since);
+      expect(entries.map((e) => e.hash).sort()).toEqual(
+        scratch.map((e) => e.hash).sort(),
+      );
+    });
+
+    it("drops already folded history from every chunk of a forked transcript", async () => {
+      const sinceWeek = alignSlot(now - 4 * DAY_MS);
+      const source = join(projectDir, "session-fork-source.jsonl");
+      const history = manySpecs(source, "hist", 800, now - 2 * DAY_MS);
+      writeSpecs(history);
+      await loadFresh(sinceWeek);
+      expect(readIndex().hot[source]).toHaveLength(0);
+
+      const forkFile = join(projectDir, "session-fork-chunked.jsonl");
+      const fresh: LineSpec = {
+        file: forkFile,
+        timestampMs: now - 5 * 60_000,
+        messageId: "m-fresh",
+        requestId: "r-fresh",
+        inputTokens: 61,
+        outputTokens: 62,
+      };
+      writeFileSync(
+        forkFile,
+        [...history, fresh].map(specToLine).join("\n") + "\n",
+      );
+      usageIndexInternals.parseChunkBytes = TINY_CHUNK_BYTES;
+      ageLastFullSweep();
+      const agedSweepMs = readIndex().lastFullSweepMs;
+
+      const { renders, entries } = await renderUntilSwept(
+        sinceWeek,
+        agedSweepMs,
+        (index) => {
+          expect(index.files[forkFile]!.forkCheckPending).toBe(true);
+          expect(index.hot[forkFile] ?? []).toHaveLength(0);
+        },
+      );
+
+      expect(renders).toBeGreaterThanOrEqual(3);
+      const index = readIndex();
+      expect(index.hot[forkFile]!.map((entry) => entry[7])).toEqual([
+        "m-fresh:r-fresh",
+      ]);
+      expect(index.files[forkFile]!.forkCheckPending).toBeUndefined();
+      expectSameTotals(
+        entries,
+        bruteForce([...history, fresh], sinceWeek.getTime()),
+      );
+    });
+
+    it("does not hold back the full sweep for a partial trailing line", async () => {
+      const sessionFile = join(projectDir, "session-chunked-partial.jsonl");
+      const specs = manySpecs(sessionFile, "pt", 600, now - 3 * 60 * 60 * 1000);
+      const partial = lineFor("pt-partial", now - 60_000).slice(0, 40);
+      writeFileSync(
+        sessionFile,
+        specs.map(specToLine).join("\n") + "\n" + partial,
+      );
+      const size = statSync(sessionFile).size;
+      usageIndexInternals.parseChunkBytes = TINY_CHUNK_BYTES;
+
+      await renderUntilSwept(since, 0);
+      const record = readIndex().files[sessionFile]!;
+      expect(record.parsedOffset).toBe(size - partial.length);
+      expect(record.parseCapped).toBeUndefined();
+
+      ageLastFullSweep();
+      const agedSweepMs = readIndex().lastFullSweepMs;
+      const parseSpy = jest.spyOn(usageIndexInternals, "parseFrom");
+      await loadFresh(since);
+      expect(parseSpy).not.toHaveBeenCalled();
+      expect(readIndex().lastFullSweepMs).toBeGreaterThan(agedSweepMs);
+    });
+
+    it("continues a partly parsed file older than the recent window on a quick sweep", async () => {
+      const sessionFile = join(projectDir, "session-chunked-idle.jsonl");
+      writeSpecs(manySpecs(sessionFile, "idle", 900, now - 8 * 60 * 60 * 1000));
+      const idleSince = new Date(now - 7 * 60 * 60 * 1000);
+      utimesSync(sessionFile, idleSince, idleSince);
+      usageIndexInternals.parseChunkBytes = TINY_CHUNK_BYTES;
+
+      await loadFresh(since);
+      const firstOffset = readIndex().files[sessionFile]!.parsedOffset!;
+      expect(firstOffset).toBeLessThan(statSync(sessionFile).size);
+
+      // As if a full sweep had just completed and the directory was not
+      // touched since, so the next render only stats recent records.
+      const index = readIndex();
+      index.lastFullSweepMs = Date.now();
+      writeFileSync(indexPath(), JSON.stringify(index));
+      utimesSync(projectDir, idleSince, idleSince);
+
+      debugMock.mockClear();
+      await loadFresh(since);
+      expect(reuseSummaryLine()).toMatch(/quick sweep/);
+      expect(readIndex().files[sessionFile]!.parsedOffset).toBeGreaterThan(
+        firstOffset,
+      );
+    });
+
+    it("counts discovery and stat time against the parse budget", async () => {
+      const files = ["d1", "d2"].map((id) =>
+        join(projectDir, `session-budget-${id}.jsonl`),
+      );
+      files.forEach((f, i) =>
+        writeFileSync(f, lineFor(`d${i}-1`, now - 30 * 60_000 + i) + "\n"),
+      );
+      await loadFresh(since);
+      files.forEach((f, i) =>
+        appendFileSync(f, lineFor(`d${i}-2`, now - 10 * 60_000 + i) + "\n"),
+      );
+
+      usageIndexInternals.parseBudgetMs = 100;
+      const realStat = usageIndexInternals.stat;
+      jest
+        .spyOn(usageIndexInternals, "stat")
+        .mockImplementation(async (path: string) => {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return realStat(path);
+        });
+      debugMock.mockClear();
+      await loadFresh(since);
+
+      expect(reuseSummaryLine()).toMatch(
+        /1 re-parsed, 0 dropped, 1 deferred \(quick sweep\)/,
+      );
+    });
+
+    function lineFor(id: string, timestampMs: number): string {
+      return usageLine({
+        timestamp: new Date(timestampMs).toISOString(),
+        messageId: `m-${id}`,
+        requestId: `r-${id}`,
+      });
+    }
   });
 });

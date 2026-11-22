@@ -85,6 +85,15 @@ const DIR_MTIME_SLACK_MS = 2_000;
  */
 export const PARSE_BUDGET_MS = 1_500;
 
+/**
+ * Bytes one file may contribute to a single parse. A first parse of an 86 MB
+ * transcript takes about 10 s, longer than a render lives, so it would never
+ * persist; capped at this size a file is bootstrapped across several renders
+ * instead, each one checkpointing its offset. At roughly 8 MB/s this keeps a
+ * single chunk near one second.
+ */
+export const PARSE_CHUNK_BYTES = 8 * 1024 * 1024;
+
 /** Read size for the backward scan that finds the start of a line. */
 const LINE_SCAN_CHUNK_BYTES = 64 * 1024;
 
@@ -95,6 +104,8 @@ const LINE_SCAN_CHUNK_BYTES = 64 * 1024;
 export const usageIndexInternals = {
   /** Overridable so tests can force the budget to run out. */
   parseBudgetMs: PARSE_BUDGET_MS,
+  /** Overridable so tests can split a small file into several chunks. */
+  parseChunkBytes: PARSE_CHUNK_BYTES,
   parseFrom: parseJsonlFileFrom,
   async stat(path: string): Promise<{ mtimeMs: number; size: number }> {
     const stats = await fsStat(path);
@@ -224,17 +235,38 @@ function dropSeenInFile(
   );
 }
 
+/** How much one refresh may parse, both measured from its start. */
+interface ParseLimits {
+  /** performance.now() past which no further file is taken. */
+  deadlineMs: number;
+  /** Bytes a single file may contribute to one parse. */
+  chunkBytes: number;
+}
+
+interface ParsedChunk {
+  entries: RawUsageEntry[];
+  endOffset: number;
+  /** The parse stopped at the chunk cap; complete lines may remain. */
+  capped: boolean;
+}
+
 async function parseChunk(
   filePath: string,
   startOffset: number,
-): Promise<{ entries: RawUsageEntry[]; endOffset: number }> {
-  const parsed = await usageIndexInternals.parseFrom(filePath, startOffset);
+  maxBytes: number,
+): Promise<ParsedChunk> {
+  const parsed = await usageIndexInternals.parseFrom(
+    filePath,
+    startOffset,
+    maxBytes,
+  );
   const raw = await Promise.all(parsed.entries.map(toRawEntry));
   return {
     entries: dedupeWithinFile(
       raw.filter((e): e is RawUsageEntry => e !== null),
     ),
     endOffset: parsed.endOffset,
+    capped: parsed.capped,
   };
 }
 
@@ -279,45 +311,102 @@ async function dropAlreadyFolded(
 }
 
 /**
- * Parses what a stale file gained since its last parse and stores it. Throws
- * on I/O errors, leaving the record untouched so a later sweep retries it.
+ * Drops the entries of a chunk that are already counted elsewhere. For a
+ * known file that is its own folded prefix: transcripts are append only, so
+ * that prefix never changes. The strict comparison is safe at the boundary:
+ * a fold takes every entry older than the 26 h horizon in one pass, so two
+ * entries sharing the millisecond at foldedUpToMs were folded together, and
+ * an appended line always carries a fresh timestamp far above it. A file
+ * under fork detection (never seen before, or still being bootstrapped from
+ * a first parse the chunk cap cut short) is also checked against the folded
+ * hash set, chunk by chunk, so copied history never counts twice.
+ */
+async function dropFolded(
+  bundle: IndexBundle,
+  file: IndexCandidate,
+  known: UsageFileRecord | undefined,
+  entries: RawUsageEntry[],
+): Promise<RawUsageEntry[]> {
+  const unfolded = known
+    ? entries.filter((entry) => entry.timestampMs > known.foldedUpToMs)
+    : entries;
+  return isForkChecked(known)
+    ? dropAlreadyFolded(bundle, file.filePath, unfolded)
+    : unfolded;
+}
+
+function isForkChecked(known: UsageFileRecord | undefined): boolean {
+  return !known || known.forkCheckPending === true;
+}
+
+/**
+ * The record after a parse. It keeps the real (mtime, size) the sweep saw;
+ * a capped parse is marked instead, which is what keeps the file stale (and
+ * stat'ed by quick sweeps) until a parse reaches its end.
+ */
+function parsedRecord(
+  file: IndexCandidate,
+  known: UsageFileRecord | undefined,
+  endOffset: number,
+  capped: boolean,
+): UsageFileRecord {
+  const record: UsageFileRecord = {
+    mtimeMs: file.mtimeMs,
+    size: file.size,
+    foldedUpToMs: known?.foldedUpToMs ?? 0,
+    parsedOffset: endOffset,
+  };
+  if (capped) record.parseCapped = true;
+  if (capped && isForkChecked(known)) record.forkCheckPending = true;
+  return record;
+}
+
+/**
+ * Parses up to `chunkBytes` of what a stale file gained since its last parse
+ * and stores it. Returns true when the chunk cap left complete lines unread,
+ * so the file still needs another parse. Throws on I/O errors, leaving the
+ * record untouched so a later sweep retries it.
  */
 async function reparseFile(
   bundle: IndexBundle,
   file: IndexCandidate,
-): Promise<void> {
+  chunkBytes: number,
+): Promise<boolean> {
   const index = bundle.index;
   const known = index.files[file.filePath];
   const plan = await planParse(known, file);
-  const chunk = await parseChunk(file.filePath, plan.startOffset);
-  // Transcripts are append only, so the folded prefix never changes. The
-  // strict comparison is safe at the boundary: a fold takes every entry
-  // older than the 26 h horizon in one pass, so two entries sharing the
-  // millisecond at foldedUpToMs were folded together, and an appended line
-  // always carries a fresh timestamp far above it.
-  const entries = known
-    ? chunk.entries.filter((entry) => entry.timestampMs > known.foldedUpToMs)
-    : await dropAlreadyFolded(bundle, file.filePath, chunk.entries);
+  const chunk = await parseChunk(file.filePath, plan.startOffset, chunkBytes);
+  const entries = await dropFolded(bundle, file, known, chunk.entries);
   const previous = plan.append ? (index.hot[file.filePath] ?? []) : [];
   const added = dropSeenInFile(entries, previous, plan.legacy);
+  // A cap that stopped at or past the size this sweep saw left none of
+  // those bytes unread; whatever was appended since moves (mtime, size), so
+  // the file is stale again without the marker. Treating it as capped would
+  // hold the full sweep back one more render for nothing.
+  const capped = chunk.capped && chunk.endOffset < file.size;
 
-  index.files[file.filePath] = {
-    mtimeMs: file.mtimeMs,
-    size: file.size,
-    foldedUpToMs: known?.foldedUpToMs ?? 0,
-    parsedOffset: chunk.endOffset,
-  };
+  index.files[file.filePath] = parsedRecord(
+    file,
+    known,
+    chunk.endOffset,
+    capped,
+  );
   index.hot[file.filePath] = [
     ...previous,
     ...added.map((entry) => toHotEntry(index, entry)),
   ];
+  return capped;
 }
 
 interface ReparseResult {
   /** Stale candidates found. */
   stale: number;
   reparsed: number;
-  /** Stale candidates left for a later sweep because the budget ran out. */
+  /**
+   * Stale candidates left for a later sweep: skipped because the budget ran
+   * out, or parsed only up to the chunk cap. A partial trailing line is not
+   * deferral; it waits for the file to change like any up-to-date file.
+   */
   deferred: number;
 }
 
@@ -325,6 +414,7 @@ function isStale(index: UsageIndex, candidate: IndexCandidate): boolean {
   const existing = index.files[candidate.filePath];
   return (
     !existing ||
+    existing.parseCapped === true ||
     existing.mtimeMs !== candidate.mtimeMs ||
     existing.size !== candidate.size
   );
@@ -342,17 +432,17 @@ function pendingBytes(index: UsageIndex, candidate: IndexCandidate): number {
 /**
  * Re-parses the candidates whose (mtime, size) no longer match the index,
  * cheapest first so live sessions (a few appended lines each) stay current
- * while a backlog is worked off. Once `budgetMs` of wall time is spent it
- * stops taking new files; their records stay as they were, so they are
- * still stale for the next holder. At least one file is always parsed, so
- * every holder makes progress. A single huge new file can still take longer
- * than the budget on its own; that file is parsed whole once and then only
- * appended to.
+ * while a backlog is worked off. Once the deadline passes it stops taking
+ * new files; their records stay as they were, so they are still stale for
+ * the next holder. At least one file is always parsed, so every holder makes
+ * progress, and no file contributes more than one chunk per holder, so a
+ * huge transcript is bootstrapped across several renders, each persisting
+ * its offset, instead of a parse no render lives long enough to finish.
  */
 async function reparseChanged(
   bundle: IndexBundle,
   candidates: IndexCandidate[],
-  budgetMs: number,
+  limits: ParseLimits,
 ): Promise<ReparseResult> {
   const index = bundle.index;
   const stale = candidates
@@ -361,21 +451,22 @@ async function reparseChanged(
     .sort((a, b) => a.cost - b.cost)
     .map(({ candidate }) => candidate);
 
-  const startedMs = performance.now();
   let attempted = 0;
   let reparsed = 0;
+  let capped = 0;
   for (const file of stale) {
-    if (attempted > 0 && performance.now() - startedMs >= budgetMs) break;
+    if (attempted > 0 && performance.now() >= limits.deadlineMs) break;
     attempted++;
     try {
-      await reparseFile(bundle, file);
+      if (await reparseFile(bundle, file, limits.chunkBytes)) capped++;
       reparsed++;
     } catch (error) {
       debug(`usageIndex: failed to parse ${file.filePath}:`, error);
     }
   }
 
-  return { stale: stale.length, reparsed, deferred: stale.length - attempted };
+  const deferred = stale.length - attempted + capped;
+  return { stale: stale.length, reparsed, deferred };
 }
 
 /**
@@ -387,7 +478,7 @@ async function fullSweep(
   bundle: IndexBundle,
   projectPaths: string[],
   nowMs: number,
-  budgetMs: number,
+  limits: ParseLimits,
 ): Promise<boolean> {
   const index = bundle.index;
   const keepFile = retentionFilter(nowMs);
@@ -411,10 +502,11 @@ async function fullSweep(
   const result = await reparseChanged(
     bundle,
     discovered.map(toCandidate),
-    budgetMs,
+    limits,
   );
-  // A sweep cut short by the budget keeps the old timestamp, so the next
-  // holder sweeps fully again and picks up the deferred files. The drops
+  // A sweep cut short by the budget or the chunk cap keeps the old
+  // timestamp, so the next holder sweeps fully again and picks up the
+  // deferred files. The drops
   // above are still sound: discovery itself saw every directory.
   if (result.deferred === 0) index.lastFullSweepMs = nowMs;
 
@@ -441,6 +533,9 @@ async function statDirectoryMtime(dirPath: string): Promise<number | null> {
  * only the ones written inside RECENT_FILE_WINDOW_MS belong to a session that
  * could still be running.
  *
+ * A file whose parse the chunk cap cut short is stat'ed however old it is,
+ * so a large transcript keeps being bootstrapped between full sweeps.
+ *
  * Known gap: a session resumed after more than RECENT_FILE_WINDOW_MS idle is
  * picked up by the next full sweep, at most FULL_SWEEP_INTERVAL_MS later.
  * Deletions, retention and folding are likewise only applied on a full sweep.
@@ -449,7 +544,7 @@ async function quickSweep(
   bundle: IndexBundle,
   projectPaths: string[],
   nowMs: number,
-  budgetMs: number,
+  limits: ParseLimits,
 ): Promise<boolean> {
   const index = bundle.index;
   const keepFile = retentionFilter(nowMs);
@@ -471,7 +566,8 @@ async function quickSweep(
   const recentPaths = Object.entries(index.files)
     .filter(
       ([filePath, record]) =>
-        record.mtimeMs >= recentCutoffMs && !candidates.has(filePath),
+        (record.mtimeMs >= recentCutoffMs || record.parseCapped === true) &&
+        !candidates.has(filePath),
     )
     .map(([filePath]) => filePath);
 
@@ -486,11 +582,7 @@ async function quickSweep(
     }),
   );
 
-  const result = await reparseChanged(
-    bundle,
-    [...candidates.values()],
-    budgetMs,
-  );
+  const result = await reparseChanged(bundle, [...candidates.values()], limits);
   debug(
     `usageIndex: ${candidates.size - result.stale} file(s) reused, ${result.reparsed} re-parsed, 0 dropped, ${result.deferred} deferred (quick sweep)`,
   );
@@ -555,20 +647,31 @@ async function refreshIndex(
   bundle: IndexBundle,
   opts: { persist: boolean } = { persist: true },
 ): Promise<void> {
+  // The budget runs from here, not from the first parse: discovery and stat
+  // take render time too, and a holder killed before it persists loses all
+  // of it.
+  const startedMs = performance.now();
   const nowMs = Date.now();
   const projectPaths = await findProjectPaths(getClaudePaths());
   const needsFullSweep =
     Object.keys(bundle.index.files).length === 0 ||
     nowMs - bundle.index.lastFullSweepMs > FULL_SWEEP_INTERVAL_MS;
 
-  // Only a holder that persists is budgeted: a cut-short in-memory build
-  // would serve partial totals with nothing on disk to resume from.
-  const budgetMs = opts.persist
-    ? usageIndexInternals.parseBudgetMs
-    : Number.POSITIVE_INFINITY;
+  // Only a holder that persists is budgeted and chunked: a cut-short
+  // in-memory build would serve partial totals with nothing on disk to
+  // resume from.
+  const limits: ParseLimits = opts.persist
+    ? {
+        deadlineMs: startedMs + usageIndexInternals.parseBudgetMs,
+        chunkBytes: usageIndexInternals.parseChunkBytes,
+      }
+    : {
+        deadlineMs: Number.POSITIVE_INFINITY,
+        chunkBytes: Number.POSITIVE_INFINITY,
+      };
   let changed = needsFullSweep
-    ? await fullSweep(bundle, projectPaths, nowMs, budgetMs)
-    : await quickSweep(bundle, projectPaths, nowMs, budgetMs);
+    ? await fullSweep(bundle, projectPaths, nowMs, limits)
+    : await quickSweep(bundle, projectPaths, nowMs, limits);
 
   // Folding rewrites both documents, so it only runs on a sweep that is
   // already going to write, under the fetch lock.

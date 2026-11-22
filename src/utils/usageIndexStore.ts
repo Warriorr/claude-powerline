@@ -73,6 +73,19 @@ export interface UsageFileRecord {
    * parsing, which resume from their size instead (see usageIndex.ts).
    */
   parsedOffset?: number;
+  /**
+   * Set while the last parse stopped at the chunk cap with complete lines
+   * still unread. Such a record is stale whatever its (mtime, size), and a
+   * quick sweep keeps stat'ing it however old its mtime is, until a parse
+   * reaches the end of the file. Absent (never false) otherwise.
+   */
+  parseCapped?: boolean;
+  /**
+   * Set while a file the index had never seen is still being bootstrapped
+   * chunk by chunk: every chunk up to its first uncapped parse goes through
+   * fork detection, as the first chunk did. Absent (never false) otherwise.
+   */
+  forkCheckPending?: boolean;
 }
 
 export interface UsageIndex {
@@ -245,6 +258,10 @@ export function collectFoldable(
 ): FoldCandidate[] {
   const candidates: FoldCandidate[] = [];
   for (const [filePath, entries] of Object.entries(index.hot)) {
+    // A file still being bootstrapped in chunks is folded only once its
+    // parse completes: folding between chunks would raise foldedUpToMs and
+    // the strict filter would drop later chunk entries at that timestamp.
+    if (index.files[filePath]?.parseCapped) continue;
     for (const entry of entries) {
       if (entry[0] < horizonMs) candidates.push({ filePath, entry });
     }

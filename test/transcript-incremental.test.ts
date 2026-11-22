@@ -6,12 +6,16 @@ import {
   writeFileSync,
   existsSync,
   readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
 } from "node:fs";
 import { join } from "node:path";
 import * as claude from "../src/utils/claude";
 import { CacheManager } from "../src/utils/cache";
 import { CacheTimerProvider } from "../src/segments/cacheTimer";
 import { MetricsProvider } from "../src/segments/metrics";
+import * as transcriptState from "../src/utils/transcriptState";
 import type { ClaudeHookData } from "../src/utils/claude";
 
 const cacheDir = process.env.CLAUDE_POWERLINE_CACHE_DIR as string;
@@ -332,5 +336,134 @@ describe("CacheManager.pruneSessionDocuments", () => {
     } finally {
       process.env.CLAUDE_POWERLINE_CACHE_DIR = original;
     }
+  });
+});
+
+describe("bounded transcript bootstrap", () => {
+  const CHUNK = 64 * 1024;
+  const file = join(workDir, "bounded.jsonl");
+  const run = (): Promise<any> =>
+    new CacheTimerProvider().getCacheTimerInfo({
+      transcript_path: file,
+    } as ClaudeHookData);
+  const bigFile = (): string => {
+    const lines: Line[] = [];
+    for (let i = 0; i < 1500; i++) {
+      lines.push(
+        user(i * 5, { pad: "p".repeat(100) }),
+        assistant(i * 5 + 2, { ephemeral_5m_input_tokens: i === 40 ? 5 : 0 }),
+      );
+    }
+    return text(lines);
+  };
+
+  beforeEach(() => {
+    jest.replaceProperty(transcriptState, "PARSE_CHUNK_BYTES", CHUNK);
+  });
+
+  it("reaches the one-shot result across several renders, one chunk each", async () => {
+    const content = bigFile();
+    writeFileSync(file, content);
+    const size = statSync(file).size;
+    expect(size).toBeGreaterThan(CHUNK * 3);
+    const spy = jest.spyOn(claude, "parseJsonlFileFrom");
+
+    let renders = 0;
+    let info: any;
+    while (renders < 40) {
+      const before = spy.mock.calls.length;
+      info = await run();
+      renders++;
+      if (spy.mock.calls.length === before) break;
+    }
+    const parses = spy.mock.calls;
+    expect(parses.length).toBeGreaterThan(2);
+    expect(parses.length).toBeLessThan(renders);
+    for (const call of parses) expect(call[2]).toBe(CHUNK);
+    for (let i = 1; i < parses.length; i++) {
+      expect(parses[i]![1]).toBeGreaterThan(parses[i - 1]![1] as number);
+    }
+
+    const { lastUser, ttl } = oracleTimer(content);
+    expect(info.detectedTtlSeconds).toBe(ttl ?? undefined);
+    expect(
+      Math.abs(
+        info.elapsedSeconds - Math.floor((Date.now() - lastUser!) / 1000),
+      ),
+    ).toBeLessThanOrEqual(2);
+  });
+
+  it("keeps the metrics window correct across capped renders", async () => {
+    const sessionId = "bounded-metrics";
+    writeFileSync(file, bigFile());
+    jest.spyOn(claude, "findTranscriptFile").mockResolvedValue(file);
+    const hook = {
+      session_id: sessionId,
+      cost: { total_cost_usd: 0, total_duration_ms: 1000 },
+    } as unknown as ClaudeHookData;
+    const spy = jest.spyOn(claude, "parseJsonlFileFrom");
+    let got: any;
+    for (let i = 0; i < 40; i++) {
+      const before = spy.mock.calls.length;
+      got = await new MetricsProvider().getMetricsInfo(sessionId, hook);
+      if (spy.mock.calls.length === before) break;
+    }
+    const want = oracleMetrics(readFileSync(file, "utf8"));
+    expect(got.messageCount).toBe(want.count);
+    expect(got.lastResponseTime).toBe(want.last);
+  });
+
+  it("rebuilds from 0 when the file is replaced by a larger one", async () => {
+    writeFileSync(
+      file,
+      text([user(0), assistant(5, { ephemeral_1h_input_tokens: 5 })]),
+    );
+    await run();
+    const replacement = file + ".new";
+    writeFileSync(
+      replacement,
+      text([
+        user(10),
+        assistant(12, { ephemeral_5m_input_tokens: 2 }),
+        user(20, { pad: "q".repeat(200) }),
+      ]),
+    );
+    renameSync(replacement, file);
+    const spy = jest.spyOn(claude, "parseJsonlFileFrom");
+    const info = await run();
+    expect(spy.mock.calls[0]?.[1]).toBe(0);
+    expect(info.detectedTtlSeconds).toBe(300);
+  });
+
+  it("rebuilds when the stored offset is not a safe integer", async () => {
+    writeFileSync(
+      file,
+      text([user(0), assistant(5, { ephemeral_5m_input_tokens: 2 })]),
+    );
+    await run();
+    // The newest cache-timer document is the one run() just wrote; earlier
+    // tests leave documents for other transcripts in the same directory.
+    const usageDir = join(cacheDir, "usage");
+    const name = readdirSync(usageDir)
+      .filter((f) => f.startsWith("cache-timer-"))
+      .sort(
+        (a, b) =>
+          statSync(join(usageDir, b)).mtimeMs -
+          statSync(join(usageDir, a)).mtimeMs,
+      )[0]!;
+    const path = join(usageDir, name);
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.endOffset = 1.5;
+    writeFileSync(path, JSON.stringify(doc));
+    const spy = jest.spyOn(claude, "parseJsonlFileFrom");
+    await run();
+    expect(spy.mock.calls[0]?.[1]).toBe(0);
+  });
+
+  it("prunes old session documents after a state write", async () => {
+    writeFileSync(file, text([user(0)]));
+    const spy = jest.spyOn(CacheManager, "pruneSessionDocuments");
+    await run();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

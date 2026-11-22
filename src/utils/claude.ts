@@ -398,48 +398,79 @@ async function parseJsonlFileStreaming(
 export interface IncrementalParseResult {
   entries: ParsedEntry[];
   endOffset: number;
+  /**
+   * True when the read stopped at `maxBytes` rather than at EOF, so more
+   * complete lines may follow `endOffset`. A partial trailing line at EOF
+   * leaves this false.
+   */
+  capped: boolean;
 }
 
 /**
  * Incremental reader for append-only JSONL files.
  *
- * Reads from byte `startOffset` to EOF and parses only complete lines (those
+ * Reads from byte `startOffset` and parses only complete lines (those
  * terminated by "\n"). `endOffset` is the byte offset just after the last
  * consumed newline, so pass it back as the next `startOffset`: a partial
  * trailing line (Claude Code may be mid-write) is left unconsumed and is
  * re-read once it is complete. Offsets are bytes, never characters, so
- * multi-byte UTF-8 does not shift them. The read buffer stays bounded by the
- * stream chunk size plus one line, but every parsed entry of the range is
- * returned at once, so a first read of a large file from offset 0 holds all
- * of its entries in memory. When nothing complete is found,
- * `endOffset === startOffset`. Rejects on I/O errors (for example a missing
- * file); callers decide how to degrade.
+ * multi-byte UTF-8 does not shift them.
+ *
+ * `maxBytes` bounds one call: once at least that many bytes were read and at
+ * least one line was consumed, the read stops at the current line boundary
+ * and `capped` is true. The check runs per stream chunk, so a call can read
+ * up to one chunk (64 KB) past `maxBytes`. A single line longer than
+ * `maxBytes` is still read whole, so every call makes progress. Callers that must finish within a
+ * render deadline parse a large file across several calls this way.
+ *
+ * The read buffer stays bounded by one line plus a stream chunk, but every
+ * parsed entry of the range is returned at once. When nothing complete is
+ * found, `endOffset === startOffset`. Rejects on I/O errors (for example a
+ * missing file); callers decide how to degrade.
  */
 export async function parseJsonlFileFrom(
   filePath: string,
   startOffset = 0,
+  maxBytes = Number.POSITIVE_INFINITY,
 ): Promise<IncrementalParseResult> {
   const entries: ParsedEntry[] = [];
   let consumed = 0;
-  let pending: Buffer = Buffer.alloc(0);
+  let bytesRead = 0;
+  let pending: Buffer[] = [];
+  const stream = createReadStream(filePath, { start: startOffset });
 
-  for await (const chunk of createReadStream(filePath, {
-    start: startOffset,
-  })) {
-    const buf = pending.length ? Buffer.concat([pending, chunk]) : chunk;
-    let lineStart = 0;
-    let newline = buf.indexOf(0x0a, lineStart);
-    while (newline !== -1) {
-      const entry = parseJsonlLine(buf.toString("utf8", lineStart, newline));
-      if (entry) entries.push(entry);
-      lineStart = newline + 1;
-      newline = buf.indexOf(0x0a, lineStart);
+  for await (const chunk of stream as AsyncIterable<Buffer>) {
+    // Checked before taking the next chunk, so a read that ends at EOF (or
+    // at a partial trailing line) reports capped: false.
+    if (bytesRead >= maxBytes && consumed > 0) {
+      stream.destroy();
+      return { entries, endOffset: startOffset + consumed, capped: true };
     }
+    bytesRead += chunk.length;
+    if (chunk.indexOf(0x0a) === -1) {
+      pending.push(chunk);
+      continue;
+    }
+    const buf = pending.length ? Buffer.concat([...pending, chunk]) : chunk;
+    const lineStart = parseCompleteLines(buf, entries);
     consumed += lineStart;
-    pending = buf.subarray(lineStart);
+    pending = lineStart < buf.length ? [buf.subarray(lineStart)] : [];
   }
 
-  return { entries, endOffset: startOffset + consumed };
+  return { entries, endOffset: startOffset + consumed, capped: false };
+}
+
+/** Parses every newline-terminated line in buf; returns the bytes consumed. */
+function parseCompleteLines(buf: Buffer, entries: ParsedEntry[]): number {
+  let lineStart = 0;
+  let newline = buf.indexOf(0x0a, lineStart);
+  while (newline !== -1) {
+    const entry = parseJsonlLine(buf.toString("utf8", lineStart, newline));
+    if (entry) entries.push(entry);
+    lineStart = newline + 1;
+    newline = buf.indexOf(0x0a, lineStart);
+  }
+  return lineStart;
 }
 
 type FileStat = { filePath: string; mtime: Date; size: number };

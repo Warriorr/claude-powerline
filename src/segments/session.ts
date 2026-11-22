@@ -62,6 +62,8 @@ interface FileTotals {
   cacheRead: number;
   totalCost: number;
   usageEntryCount: number;
+  /** True when the last parse stopped at its byte budget with bytes left. */
+  capped?: boolean;
 }
 
 /** Cached document: one per session, keyed by transcript file path. */
@@ -71,6 +73,19 @@ interface SessionTotalsDocument {
 }
 
 const SESSION_TOTALS_VERSION = 1;
+
+/** Transcript bytes parsed per render across the main and subagent files. */
+export const SESSION_PARSE_BUDGET_BYTES = 16 * 1024 * 1024;
+
+const OFFSET_KEYS = ["endOffset", "size"] as const;
+const TOTAL_KEYS = [
+  "input",
+  "output",
+  "cacheCreation",
+  "cacheRead",
+  "totalCost",
+  "usageEntryCount",
+] as const;
 
 function emptyTotals(): FileTotals {
   return {
@@ -94,7 +109,19 @@ function documentName(sessionId: string): string {
 function isValidRecord(value: unknown): value is FileTotals {
   if (typeof value !== "object" || value === null) return false;
   const rec = value as Record<string, unknown>;
-  return Object.keys(emptyTotals()).every((k) => typeof rec[k] === "number");
+  return (
+    OFFSET_KEYS.every(
+      (k) => Number.isSafeInteger(rec[k]) && (rec[k] as number) >= 0,
+    ) &&
+    TOTAL_KEYS.every(
+      (k) => Number.isFinite(rec[k]) && (rec[k] as number) >= 0,
+    ) &&
+    // Inodes can exceed 2^53 (NTFS file ids), so only require a number.
+    Number.isFinite(rec.ino) &&
+    (rec.ino as number) >= 0 &&
+    Number.isFinite(rec.mtimeMs) &&
+    (rec.capped === undefined || typeof rec.capped === "boolean")
+  );
 }
 
 async function loadDocument(name: string): Promise<Record<string, FileTotals>> {
@@ -126,48 +153,60 @@ async function addEntries(
  * Brings one file's totals up to date, reading only the bytes appended since
  * the stored endOffset. A smaller file (truncated) or a new inode (replaced)
  * restarts at 0. Transcripts are append only, so a file rewritten in place to
- * at least its old size is not detected. A file that is gone returns null; any other failure keeps
+ * at least its old size is not detected. At most maxBytes are parsed; a capped
+ * file keeps its partial totals and is flagged so the next render continues. A file that is gone returns null; any other failure keeps
  * the stored totals, so a transient error neither drops the file from this
  * render nor forces a full re-parse on the next one.
  */
 async function refreshFileTotals(
   filePath: string,
   stored: unknown,
-): Promise<FileTotals | null> {
+  maxBytes: number,
+): Promise<{ totals: FileTotals | null; spent: number }> {
   const previous = isValidRecord(stored) ? stored : null;
   let stats;
   try {
     stats = await stat(filePath);
   } catch (error) {
-    if ((error as { code?: string }).code === "ENOENT") return null;
+    if ((error as { code?: string }).code === "ENOENT") {
+      return { totals: null, spent: 0 };
+    }
     debug(`Failed to stat transcript ${filePath}:`, error);
-    return previous;
+    return { totals: previous, spent: 0 };
   }
 
   let totals = previous ?? emptyTotals();
   if (stats.size < totals.endOffset || stats.ino !== totals.ino) {
     totals = emptyTotals();
   }
-  if (stats.size === totals.size && stats.mtimeMs === totals.mtimeMs) {
-    return totals;
+  if (
+    !totals.capped &&
+    stats.size === totals.size &&
+    stats.mtimeMs === totals.mtimeMs
+  ) {
+    return { totals, spent: 0 };
   }
 
   const next = { ...totals };
+  let spent = 0;
   try {
-    const { entries, endOffset } = await parseJsonlFileFrom(
+    const { entries, endOffset, capped } = await parseJsonlFileFrom(
       filePath,
       totals.endOffset,
+      maxBytes,
     );
     await addEntries(next, entries);
     next.endOffset = endOffset;
+    next.capped = capped;
+    spent = endOffset - totals.endOffset;
   } catch (error) {
     debug(`Failed to read transcript ${filePath}:`, error);
-    return previous;
+    return { totals: previous, spent: 0 };
   }
   next.size = stats.size;
   next.mtimeMs = stats.mtimeMs;
   next.ino = stats.ino;
-  return next;
+  return { totals: next, spent };
 }
 
 export class SessionProvider {
@@ -188,8 +227,20 @@ export class SessionProvider {
       const name = documentName(sessionId);
       const previous = await loadDocument(name);
       const files: Record<string, FileTotals> = {};
+      let budget = SESSION_PARSE_BUDGET_BYTES;
       for (const filePath of [transcriptPath, ...agentTranscripts]) {
-        const totals = await refreshFileTotals(filePath, previous[filePath]);
+        const stored = previous[filePath];
+        if (budget <= 0) {
+          // Over budget: keep the previous record as is until a later render.
+          if (isValidRecord(stored)) files[filePath] = stored;
+          continue;
+        }
+        const { totals, spent } = await refreshFileTotals(
+          filePath,
+          stored,
+          budget,
+        );
+        budget -= spent;
         if (totals) files[filePath] = totals;
       }
 
