@@ -1,11 +1,12 @@
-import { stat as fsStat } from "node:fs/promises";
+import { open, stat as fsStat } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import { debug } from "./logger";
 import { CacheManager } from "./cache";
 import {
   getClaudePaths,
   findProjectPaths,
   collectProjectFiles,
-  parseJsonlFile,
+  parseJsonlFileFrom,
   createUniqueHash,
   type ParsedEntry,
 } from "./claude";
@@ -29,6 +30,7 @@ import {
   type HotEntry,
   type RawUsageEntry,
   type UsageBucket,
+  type UsageFileRecord,
   type UsageIndex,
 } from "./usageIndexStore";
 
@@ -76,10 +78,24 @@ const RECENT_FILE_WINDOW_MS = 6 * 60 * 60 * 1000;
 const DIR_MTIME_SLACK_MS = 2_000;
 
 /**
+ * Wall time the lock holder may spend parsing transcripts before it stops
+ * taking new files and persists what it has. Claude Code replaces a render
+ * after a few seconds, and a holder killed before persisting leaves the next
+ * holder the same backlog, so progress has to land in chunks.
+ */
+export const PARSE_BUDGET_MS = 1_500;
+
+/** Read size for the backward scan that finds the start of a line. */
+const LINE_SCAN_CHUNK_BYTES = 64 * 1024;
+
+/**
  * Indirection over fs.stat so tests can observe exactly which paths a sweep
  * touches. Production code always goes through the real stat.
  */
 export const usageIndexInternals = {
+  /** Overridable so tests can force the budget to run out. */
+  parseBudgetMs: PARSE_BUDGET_MS,
+  parseFrom: parseJsonlFileFrom,
   async stat(path: string): Promise<{ mtimeMs: number; size: number }> {
     const stats = await fsStat(path);
     // Rounded to whole ms the same way Node builds stats.mtime from the
@@ -121,10 +137,105 @@ async function toRawEntry(entry: ParsedEntry): Promise<RawUsageEntry | null> {
   };
 }
 
-async function parseFileForIndex(filePath: string): Promise<RawUsageEntry[]> {
-  const parsedEntries = await parseJsonlFile(filePath);
-  const raw = await Promise.all(parsedEntries.map(toRawEntry));
-  return dedupeWithinFile(raw.filter((e): e is RawUsageEntry => e !== null));
+function isOffset(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Returns the offset of the first byte of the line containing byte
+ * `offset`: `offset` itself when the byte before it is a newline,
+ * otherwise just after the previous newline (0 when there is none).
+ */
+async function lineStartAtOrBefore(
+  filePath: string,
+  offset: number,
+): Promise<number> {
+  const handle = await open(filePath, "r");
+  try {
+    let end = offset;
+    while (end > 0) {
+      const start = Math.max(0, end - LINE_SCAN_CHUNK_BYTES);
+      const buf = Buffer.alloc(end - start);
+      const { bytesRead } = await handle.read(buf, 0, buf.length, start);
+      const newline = buf.subarray(0, bytesRead).lastIndexOf(0x0a);
+      if (newline !== -1) return start + newline + 1;
+      end = start;
+    }
+    return 0;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Where a re-parse starts and whether it extends the file's hot entries. */
+interface ParsePlan {
+  startOffset: number;
+  append: boolean;
+  /** Resuming a record written before parsedOffset existed. */
+  legacy: boolean;
+}
+
+/**
+ * Plans the parse of a stale candidate. A record without parsedOffset comes
+ * from a build that parsed every file whole, so its hot entries reflect a
+ * parse up to at least its stored size: it resumes from the start of the
+ * line holding that byte (a line that was partial then was not parsed) and
+ * the hash dedupe drops any overlap. Treating it as offset 0 instead would
+ * re-parse every transcript at once, the from-scratch rebuild that never
+ * finished on 2026-09-08. A file smaller than its resume point was
+ * truncated or replaced and is parsed whole.
+ */
+async function planParse(
+  known: UsageFileRecord | undefined,
+  file: IndexCandidate,
+): Promise<ParsePlan> {
+  const whole = { startOffset: 0, append: false, legacy: false };
+  if (!known) return whole;
+
+  const legacy = !isOffset(known.parsedOffset);
+  const resumeAt = legacy ? known.size : known.parsedOffset;
+  if (!isOffset(resumeAt) || file.size < resumeAt) return whole;
+  if (!legacy) return { startOffset: resumeAt, append: true, legacy };
+
+  const startOffset = await lineStartAtOrBefore(file.filePath, resumeAt);
+  return { startOffset, append: true, legacy };
+}
+
+/**
+ * Drops entries of a new chunk that the file's hot entries already hold.
+ * dedupeWithinFile keeps the earliest copy per hash, which for an append only
+ * transcript is the copy an earlier chunk already stored. Entries folded into
+ * buckets are at or below foldedUpToMs and were filtered out before this.
+ * A legacy resume can re-read a few lines the old whole-file parse already
+ * stored; those without a hash cannot be matched, so any that are not newer
+ * than the newest stored entry are taken to be that overlap.
+ */
+function dropSeenInFile(
+  entries: RawUsageEntry[],
+  previous: HotEntry[],
+  legacy: boolean,
+): RawUsageEntry[] {
+  const seen = new Set(previous.map((entry) => entry[7]));
+  const newestMs = legacy
+    ? previous.reduce((max, entry) => Math.max(max, entry[0]), -Infinity)
+    : -Infinity;
+  return entries.filter((entry) =>
+    entry.hash ? !seen.has(entry.hash) : entry.timestampMs > newestMs,
+  );
+}
+
+async function parseChunk(
+  filePath: string,
+  startOffset: number,
+): Promise<{ entries: RawUsageEntry[]; endOffset: number }> {
+  const parsed = await usageIndexInternals.parseFrom(filePath, startOffset);
+  const raw = await Promise.all(parsed.entries.map(toRawEntry));
+  return {
+    entries: dedupeWithinFile(
+      raw.filter((e): e is RawUsageEntry => e !== null),
+    ),
+    endOffset: parsed.endOffset,
+  };
 }
 
 function retentionFilter(
@@ -167,42 +278,104 @@ async function dropAlreadyFolded(
   return entries.filter((entry) => !entry.hash || !folded.has(entry.hash));
 }
 
-/** Re-parses the candidates whose (mtime, size) no longer match the index. */
+/**
+ * Parses what a stale file gained since its last parse and stores it. Throws
+ * on I/O errors, leaving the record untouched so a later sweep retries it.
+ */
+async function reparseFile(
+  bundle: IndexBundle,
+  file: IndexCandidate,
+): Promise<void> {
+  const index = bundle.index;
+  const known = index.files[file.filePath];
+  const plan = await planParse(known, file);
+  const chunk = await parseChunk(file.filePath, plan.startOffset);
+  // Transcripts are append only, so the folded prefix never changes. The
+  // strict comparison is safe at the boundary: a fold takes every entry
+  // older than the 26 h horizon in one pass, so two entries sharing the
+  // millisecond at foldedUpToMs were folded together, and an appended line
+  // always carries a fresh timestamp far above it.
+  const entries = known
+    ? chunk.entries.filter((entry) => entry.timestampMs > known.foldedUpToMs)
+    : await dropAlreadyFolded(bundle, file.filePath, chunk.entries);
+  const previous = plan.append ? (index.hot[file.filePath] ?? []) : [];
+  const added = dropSeenInFile(entries, previous, plan.legacy);
+
+  index.files[file.filePath] = {
+    mtimeMs: file.mtimeMs,
+    size: file.size,
+    foldedUpToMs: known?.foldedUpToMs ?? 0,
+    parsedOffset: chunk.endOffset,
+  };
+  index.hot[file.filePath] = [
+    ...previous,
+    ...added.map((entry) => toHotEntry(index, entry)),
+  ];
+}
+
+interface ReparseResult {
+  /** Stale candidates found. */
+  stale: number;
+  reparsed: number;
+  /** Stale candidates left for a later sweep because the budget ran out. */
+  deferred: number;
+}
+
+function isStale(index: UsageIndex, candidate: IndexCandidate): boolean {
+  const existing = index.files[candidate.filePath];
+  return (
+    !existing ||
+    existing.mtimeMs !== candidate.mtimeMs ||
+    existing.size !== candidate.size
+  );
+}
+
+/** Rough count of bytes a candidate still has to parse. */
+function pendingBytes(index: UsageIndex, candidate: IndexCandidate): number {
+  const known = index.files[candidate.filePath];
+  const resumeAt = known ? (known.parsedOffset ?? known.size) : 0;
+  return resumeAt <= candidate.size
+    ? candidate.size - resumeAt
+    : candidate.size;
+}
+
+/**
+ * Re-parses the candidates whose (mtime, size) no longer match the index,
+ * cheapest first so live sessions (a few appended lines each) stay current
+ * while a backlog is worked off. Once `budgetMs` of wall time is spent it
+ * stops taking new files; their records stay as they were, so they are
+ * still stale for the next holder. At least one file is always parsed, so
+ * every holder makes progress. A single huge new file can still take longer
+ * than the budget on its own; that file is parsed whole once and then only
+ * appended to.
+ */
 async function reparseChanged(
   bundle: IndexBundle,
   candidates: IndexCandidate[],
-): Promise<number> {
+  budgetMs: number,
+): Promise<ReparseResult> {
   const index = bundle.index;
-  const stale = candidates.filter((candidate) => {
-    const existing = index.files[candidate.filePath];
-    return (
-      !existing ||
-      existing.mtimeMs !== candidate.mtimeMs ||
-      existing.size !== candidate.size
-    );
-  });
+  const stale = candidates
+    .filter((candidate) => isStale(index, candidate))
+    .map((candidate) => ({ candidate, cost: pendingBytes(index, candidate) }))
+    .sort((a, b) => a.cost - b.cost)
+    .map(({ candidate }) => candidate);
 
+  const startedMs = performance.now();
+  let attempted = 0;
+  let reparsed = 0;
   for (const file of stale) {
-    const known = index.files[file.filePath];
-    const parsed = await parseFileForIndex(file.filePath);
-    // Transcripts are append only, so the folded prefix never changes. The
-    // strict comparison is safe at the boundary: a fold takes every entry
-    // older than the 26 h horizon in one pass, so two entries sharing the
-    // millisecond at foldedUpToMs were folded together, and an appended line
-    // always carries a fresh timestamp far above it.
-    const entries = known
-      ? parsed.filter((entry) => entry.timestampMs > known.foldedUpToMs)
-      : await dropAlreadyFolded(bundle, file.filePath, parsed);
-
-    index.files[file.filePath] = {
-      mtimeMs: file.mtimeMs,
-      size: file.size,
-      foldedUpToMs: known?.foldedUpToMs ?? 0,
-    };
-    index.hot[file.filePath] = entries.map((entry) => toHotEntry(index, entry));
+    if (attempted > 0 && performance.now() - startedMs >= budgetMs) break;
+    attempted++;
+    try {
+      await reparseFile(bundle, file);
+      reparsed++;
+    } catch (error) {
+      debug(`usageIndex: failed to parse ${file.filePath}:`, error);
+    }
   }
 
-  return stale.length;
+  return { stale: stale.length, reparsed, deferred: stale.length - attempted };
 }
 
 /**
@@ -214,6 +387,7 @@ async function fullSweep(
   bundle: IndexBundle,
   projectPaths: string[],
   nowMs: number,
+  budgetMs: number,
 ): Promise<boolean> {
   const index = bundle.index;
   const keepFile = retentionFilter(nowMs);
@@ -234,13 +408,20 @@ async function fullSweep(
     }
   }
 
-  const reparsed = await reparseChanged(bundle, discovered.map(toCandidate));
-  index.lastFullSweepMs = nowMs;
+  const result = await reparseChanged(
+    bundle,
+    discovered.map(toCandidate),
+    budgetMs,
+  );
+  // A sweep cut short by the budget keeps the old timestamp, so the next
+  // holder sweeps fully again and picks up the deferred files. The drops
+  // above are still sound: discovery itself saw every directory.
+  if (result.deferred === 0) index.lastFullSweepMs = nowMs;
 
   debug(
-    `usageIndex: ${discovered.length - reparsed} file(s) reused, ${reparsed} re-parsed, ${dropped} dropped (full sweep)`,
+    `usageIndex: ${discovered.length - result.stale} file(s) reused, ${result.reparsed} re-parsed, ${dropped} dropped, ${result.deferred} deferred (full sweep)`,
   );
-  return reparsed > 0 || dropped > 0;
+  return result.reparsed > 0 || dropped > 0;
 }
 
 async function statDirectoryMtime(dirPath: string): Promise<number | null> {
@@ -268,6 +449,7 @@ async function quickSweep(
   bundle: IndexBundle,
   projectPaths: string[],
   nowMs: number,
+  budgetMs: number,
 ): Promise<boolean> {
   const index = bundle.index;
   const keepFile = retentionFilter(nowMs);
@@ -304,11 +486,15 @@ async function quickSweep(
     }),
   );
 
-  const reparsed = await reparseChanged(bundle, [...candidates.values()]);
-  debug(
-    `usageIndex: ${candidates.size - reparsed} file(s) reused, ${reparsed} re-parsed, 0 dropped (quick sweep)`,
+  const result = await reparseChanged(
+    bundle,
+    [...candidates.values()],
+    budgetMs,
   );
-  return reparsed > 0;
+  debug(
+    `usageIndex: ${candidates.size - result.stale} file(s) reused, ${result.reparsed} re-parsed, 0 dropped, ${result.deferred} deferred (quick sweep)`,
+  );
+  return result.reparsed > 0;
 }
 
 /**
@@ -375,9 +561,14 @@ async function refreshIndex(
     Object.keys(bundle.index.files).length === 0 ||
     nowMs - bundle.index.lastFullSweepMs > FULL_SWEEP_INTERVAL_MS;
 
+  // Only a holder that persists is budgeted: a cut-short in-memory build
+  // would serve partial totals with nothing on disk to resume from.
+  const budgetMs = opts.persist
+    ? usageIndexInternals.parseBudgetMs
+    : Number.POSITIVE_INFINITY;
   let changed = needsFullSweep
-    ? await fullSweep(bundle, projectPaths, nowMs)
-    : await quickSweep(bundle, projectPaths, nowMs);
+    ? await fullSweep(bundle, projectPaths, nowMs, budgetMs)
+    : await quickSweep(bundle, projectPaths, nowMs, budgetMs);
 
   // Folding rewrites both documents, so it only runs on a sweep that is
   // already going to write, under the fetch lock.

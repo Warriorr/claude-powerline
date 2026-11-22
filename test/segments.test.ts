@@ -759,23 +759,24 @@ describe("CacheTimer Segment", () => {
     const transcriptPath = join(cacheTempDir, "transcript.jsonl");
     const now = Date.now();
     const userTs = new Date(now - 120_000).toISOString();
-    const content = [
-      JSON.stringify({
-        type: "user",
-        message: { role: "user" },
-        timestamp: new Date(now - 600_000).toISOString(),
-      }),
-      JSON.stringify({
-        type: "user",
-        message: { role: "user" },
-        timestamp: userTs,
-      }),
-      JSON.stringify({
-        type: "assistant",
-        message: { role: "assistant" },
-        timestamp: new Date(now - 15_000).toISOString(),
-      }),
-    ].join("\n");
+    const content =
+      [
+        JSON.stringify({
+          type: "user",
+          message: { role: "user" },
+          timestamp: new Date(now - 600_000).toISOString(),
+        }),
+        JSON.stringify({
+          type: "user",
+          message: { role: "user" },
+          timestamp: userTs,
+        }),
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant" },
+          timestamp: new Date(now - 15_000).toISOString(),
+        }),
+      ].join("\n") + "\n";
     writeFileSync(transcriptPath, content);
 
     const provider = new CacheTimerProvider();
@@ -791,26 +792,27 @@ describe("CacheTimer Segment", () => {
   it("autodetects TTL from assistant cache_creation usage tokens", async () => {
     const transcriptPath = join(cacheTempDir, "transcript-ttl-1h.jsonl");
     const now = Date.now();
-    const content = [
-      JSON.stringify({
-        type: "user",
-        message: { role: "user" },
-        timestamp: new Date(now - 60_000).toISOString(),
-      }),
-      JSON.stringify({
-        type: "assistant",
-        message: {
-          role: "assistant",
-          usage: {
-            cache_creation: {
-              ephemeral_1h_input_tokens: 48153,
-              ephemeral_5m_input_tokens: 0,
+    const content =
+      [
+        JSON.stringify({
+          type: "user",
+          message: { role: "user" },
+          timestamp: new Date(now - 60_000).toISOString(),
+        }),
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            usage: {
+              cache_creation: {
+                ephemeral_1h_input_tokens: 48153,
+                ephemeral_5m_input_tokens: 0,
+              },
             },
           },
-        },
-        timestamp: new Date(now - 30_000).toISOString(),
-      }),
-    ].join("\n");
+          timestamp: new Date(now - 30_000).toISOString(),
+        }),
+      ].join("\n") + "\n";
     writeFileSync(transcriptPath, content);
 
     const provider = new CacheTimerProvider();
@@ -825,26 +827,27 @@ describe("CacheTimer Segment", () => {
   it("autodetects 5-minute TTL when only ephemeral_5m_input_tokens is set", async () => {
     const transcriptPath = join(cacheTempDir, "transcript-ttl-5m.jsonl");
     const now = Date.now();
-    const content = [
-      JSON.stringify({
-        type: "user",
-        message: { role: "user" },
-        timestamp: new Date(now - 60_000).toISOString(),
-      }),
-      JSON.stringify({
-        type: "assistant",
-        message: {
-          role: "assistant",
-          usage: {
-            cache_creation: {
-              ephemeral_1h_input_tokens: 0,
-              ephemeral_5m_input_tokens: 1200,
+    const content =
+      [
+        JSON.stringify({
+          type: "user",
+          message: { role: "user" },
+          timestamp: new Date(now - 60_000).toISOString(),
+        }),
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            usage: {
+              cache_creation: {
+                ephemeral_1h_input_tokens: 0,
+                ephemeral_5m_input_tokens: 1200,
+              },
             },
           },
-        },
-        timestamp: new Date(now - 30_000).toISOString(),
-      }),
-    ].join("\n");
+          timestamp: new Date(now - 30_000).toISOString(),
+        }),
+      ].join("\n") + "\n";
     writeFileSync(transcriptPath, content);
 
     const provider = new CacheTimerProvider();
@@ -859,18 +862,19 @@ describe("CacheTimer Segment", () => {
   it("omits detectedTtlSeconds when no cache_creation usage is recorded", async () => {
     const transcriptPath = join(cacheTempDir, "transcript-no-usage.jsonl");
     const now = Date.now();
-    const content = [
-      JSON.stringify({
-        type: "user",
-        message: { role: "user" },
-        timestamp: new Date(now - 60_000).toISOString(),
-      }),
-      JSON.stringify({
-        type: "assistant",
-        message: { role: "assistant" },
-        timestamp: new Date(now - 30_000).toISOString(),
-      }),
-    ].join("\n");
+    const content =
+      [
+        JSON.stringify({
+          type: "user",
+          message: { role: "user" },
+          timestamp: new Date(now - 60_000).toISOString(),
+        }),
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant" },
+          timestamp: new Date(now - 30_000).toISOString(),
+        }),
+      ].join("\n") + "\n";
     writeFileSync(transcriptPath, content);
 
     const provider = new CacheTimerProvider();

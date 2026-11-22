@@ -1,6 +1,11 @@
-import { readFile } from "node:fs/promises";
 import { debug } from "../utils/logger";
-import { findTranscriptFile, ClaudeHookData } from "../utils/claude";
+import {
+  findTranscriptFile,
+  type ClaudeHookData,
+  type ParsedEntry,
+} from "../utils/claude";
+import { METRICS_DOCUMENT_PREFIX } from "../utils/cache";
+import { readIncrementalState } from "../utils/transcriptState";
 
 export interface MetricsInfo {
   responseTime: number | null;
@@ -11,113 +16,108 @@ export interface MetricsInfo {
   linesRemoved: number | null;
 }
 
-interface TranscriptEntry {
-  timestamp: string;
-  type?: string;
-  message?: {
-    role?: string;
-    type?: string;
-    content?: Array<{
-      type?: string;
-      [key: string]: any;
-    }>;
-    usage?: {
-      input_tokens?: number;
-      output_tokens?: number;
-      cache_creation_input_tokens?: number;
-      cache_read_input_tokens?: number;
-    };
-  };
-  isSidechain?: boolean;
+/** Fields calculateLastResponseTime reads from one transcript entry. */
+interface WindowEntry {
+  /** Milliseconds since epoch, or null when the timestamp did not parse. */
+  t: number | null;
+  user: boolean;
+  assistant: boolean;
+}
+
+interface MetricsState {
+  messageCount: number;
+  /** The last RESPONSE_WINDOW non-sidechain entries, oldest first. */
+  window: WindowEntry[];
+}
+
+const METRICS_STATE_VERSION = 1;
+const RESPONSE_WINDOW = 20;
+
+function isMetricsState(value: unknown): value is MetricsState {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.messageCount === "number" &&
+    Array.isArray(v.window) &&
+    v.window.every(
+      (w) =>
+        typeof w === "object" &&
+        w !== null &&
+        (w.t === null || typeof w.t === "number") &&
+        typeof w.user === "boolean" &&
+        typeof w.assistant === "boolean",
+    )
+  );
+}
+
+function foldMetrics(
+  state: MetricsState,
+  entries: ParsedEntry[],
+): MetricsState {
+  for (const { raw: rawEntry, isSidechain } of entries) {
+    const raw = rawEntry as any;
+    if (isSidechain) continue;
+    const messageType = raw.type || raw.message?.role || raw.message?.type;
+    const isToolResult =
+      raw.type === "user" && raw.message?.content?.[0]?.type === "tool_result";
+    const user = messageType === "user" && !isToolResult;
+    if (user) state.messageCount++;
+    const t = new Date(raw.timestamp).getTime();
+    state.window.push({
+      t: Number.isNaN(t) ? null : t,
+      user,
+      assistant: messageType === "assistant",
+    });
+  }
+  state.window = state.window.slice(-RESPONSE_WINDOW);
+  return state;
+}
+
+function stateDocumentName(sessionId: string): string {
+  return `${METRICS_DOCUMENT_PREFIX}${sessionId.replace(/[^\w-]/g, "_")}`;
 }
 
 export class MetricsProvider {
-  private async loadTranscriptEntries(
-    sessionId: string,
-  ): Promise<TranscriptEntry[]> {
+  private async loadState(sessionId: string): Promise<MetricsState> {
+    const empty = (): MetricsState => ({ messageCount: 0, window: [] });
     try {
       const transcriptPath = await findTranscriptFile(sessionId);
       if (!transcriptPath) {
         debug(`No transcript found for session: ${sessionId}`);
-        return [];
+        return empty();
       }
 
       debug(`Loading transcript from: ${transcriptPath}`);
-
-      const content = await readFile(transcriptPath, "utf-8");
-      const lines = content
-        .trim()
-        .split("\n")
-        .filter((line) => line.trim());
-
-      const entries: TranscriptEntry[] = [];
-
-      for (const line of lines) {
-        try {
-          const entry = JSON.parse(line) as TranscriptEntry;
-
-          if (entry.isSidechain === true) {
-            continue;
-          }
-
-          entries.push(entry);
-        } catch (parseError) {
-          debug(`Failed to parse JSONL line: ${parseError}`);
-          continue;
-        }
-      }
-
-      debug(`Loaded ${entries.length} transcript entries`);
-      return entries;
+      const state = await readIncrementalState<MetricsState>({
+        filePath: transcriptPath,
+        documentName: stateDocumentName(sessionId),
+        version: METRICS_STATE_VERSION,
+        initial: empty,
+        isValid: isMetricsState,
+        fold: foldMetrics,
+      });
+      return state ?? empty();
     } catch (error) {
       debug(`Error loading transcript for ${sessionId}:`, error);
-      return [];
+      return empty();
     }
   }
 
-  private calculateMessageCount(entries: TranscriptEntry[]): number {
-    return entries.filter((entry) => {
-      const messageType =
-        entry.type || entry.message?.role || entry.message?.type;
-      const isToolResult =
-        entry.type === "user" &&
-        entry.message?.content?.[0]?.type === "tool_result";
-      return messageType === "user" && !isToolResult;
-    }).length;
-  }
+  private calculateLastResponseTime(window: WindowEntry[]): number | null {
+    if (window.length === 0) return null;
 
-  private calculateLastResponseTime(entries: TranscriptEntry[]): number | null {
-    if (entries.length === 0) return null;
-
-    const recentEntries = entries.slice(-20);
-
-    let lastUserTime: Date | null = null;
+    let lastUserTime: number | null = null;
     let bestResponseTime: number | null = null;
 
-    for (const entry of recentEntries) {
-      if (!entry.timestamp) continue;
-
-      try {
-        const timestamp = new Date(entry.timestamp);
-        const messageType =
-          entry.type || entry.message?.role || entry.message?.type;
-
-        const isToolResult =
-          entry.type === "user" &&
-          entry.message?.content?.[0]?.type === "tool_result";
-        const isRealUserMessage = messageType === "user" && !isToolResult;
-
-        if (isRealUserMessage) {
-          lastUserTime = timestamp;
-        } else if (messageType === "assistant" && lastUserTime) {
-          const responseTime =
-            (timestamp.getTime() - lastUserTime.getTime()) / 1000;
-          if (responseTime > 0.1 && responseTime < 300) {
-            bestResponseTime = responseTime;
-          }
+    for (const entry of window) {
+      const time = entry.t ?? NaN;
+      if (entry.user) {
+        lastUserTime = time;
+      } else if (entry.assistant && lastUserTime !== null) {
+        const responseTime = (time - lastUserTime) / 1000;
+        if (responseTime > 0.1 && responseTime < 300) {
+          bestResponseTime = responseTime;
         }
-      } catch {
-        continue;
       }
     }
 
@@ -143,9 +143,8 @@ export class MetricsProvider {
         };
       }
 
-      const entries = await this.loadTranscriptEntries(sessionId);
-      const messageCount = this.calculateMessageCount(entries);
-      const lastResponseTime = this.calculateLastResponseTime(entries);
+      const { messageCount, window } = await this.loadState(sessionId);
+      const lastResponseTime = this.calculateLastResponseTime(window);
 
       return {
         responseTime: hookData.cost.total_api_duration_ms / 1000,

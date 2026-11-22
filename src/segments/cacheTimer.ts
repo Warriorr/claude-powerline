@@ -1,25 +1,58 @@
-import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { debug } from "../utils/logger";
-import type { ClaudeHookData } from "../utils/claude";
+import { CACHE_TIMER_DOCUMENT_PREFIX } from "../utils/cache";
+import { readIncrementalState } from "../utils/transcriptState";
+import type { ClaudeHookData, ParsedEntry } from "../utils/claude";
 
 export interface CacheTimerInfo {
   elapsedSeconds: number;
   detectedTtlSeconds?: number;
 }
 
-interface TranscriptEntry {
-  type?: string;
-  timestamp?: string;
-  message?: {
-    role?: string;
-    type?: string;
-    usage?: {
-      cache_creation?: {
-        ephemeral_1h_input_tokens?: number;
-        ephemeral_5m_input_tokens?: number;
-      };
-    };
-  };
+interface CacheTimerState {
+  lastUserTimestampMs: number | null;
+  lastTtlSeconds: number | null;
+}
+
+const CACHE_TIMER_STATE_VERSION = 1;
+
+function isCacheTimerState(value: unknown): value is CacheTimerState {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  const ok = (x: unknown): boolean => x === null || typeof x === "number";
+  return ok(v.lastUserTimestampMs) && ok(v.lastTtlSeconds);
+}
+
+function ttlFromEntry(raw: any): number | null {
+  const cc = raw?.message?.usage?.cache_creation;
+  if (!cc) return null;
+  if ((cc.ephemeral_1h_input_tokens ?? 0) > 0) return 3600;
+  if ((cc.ephemeral_5m_input_tokens ?? 0) > 0) return 300;
+  return null;
+}
+
+/** Later entries win, so folding appended chunks equals one full scan. */
+function foldCacheTimer(
+  state: CacheTimerState,
+  entries: ParsedEntry[],
+): CacheTimerState {
+  for (const { raw: rawEntry } of entries) {
+    const raw = rawEntry as any;
+    const role = raw.type || raw.message?.role || raw.message?.type;
+    if (role === "user") {
+      const t = Date.parse(raw.timestamp);
+      if (!Number.isNaN(t)) state.lastUserTimestampMs = t;
+    } else if (role === "assistant") {
+      state.lastTtlSeconds = ttlFromEntry(raw) ?? state.lastTtlSeconds;
+    }
+  }
+  return state;
+}
+
+function stateDocumentName(transcriptPath: string): string {
+  const hash = createHash("sha1").update(transcriptPath).digest("hex");
+  return `${CACHE_TIMER_DOCUMENT_PREFIX}${hash.slice(0, 16)}`;
 }
 
 export class CacheTimerProvider {
@@ -32,68 +65,23 @@ export class CacheTimerProvider {
       return null;
     }
 
-    const lines = await this.readTranscriptLines(path);
-    const anchor =
-      (lines && this.lastUserTimestamp(lines)) ?? (await this.fileMtime(path));
+    const state = await readIncrementalState<CacheTimerState>({
+      filePath: path,
+      documentName: stateDocumentName(path),
+      version: CACHE_TIMER_STATE_VERSION,
+      initial: () => ({ lastUserTimestampMs: null, lastTtlSeconds: null }),
+      isValid: isCacheTimerState,
+      fold: foldCacheTimer,
+    });
+    const anchor = state?.lastUserTimestampMs ?? (await this.fileMtime(path));
     if (anchor === null) return null;
 
     const elapsedSeconds = Math.max(
       0,
       Math.floor((Date.now() - anchor) / 1000),
     );
-    const detectedTtlSeconds = lines
-      ? (this.detectTtlSeconds(lines) ?? undefined)
-      : undefined;
+    const detectedTtlSeconds = state?.lastTtlSeconds ?? undefined;
     return { elapsedSeconds, detectedTtlSeconds };
-  }
-
-  private async readTranscriptLines(path: string): Promise<string[] | null> {
-    try {
-      const content = await readFile(path, "utf-8");
-      return content.split("\n");
-    } catch (error) {
-      debug(`CacheTimer: readFile failed for ${path}: ${String(error)}`);
-      return null;
-    }
-  }
-
-  private lastUserTimestamp(lines: string[]): number | null {
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i]?.trim();
-      if (!line) continue;
-      try {
-        const entry = JSON.parse(line) as TranscriptEntry;
-        const messageType =
-          entry.type || entry.message?.role || entry.message?.type;
-        if (messageType !== "user") continue;
-        if (!entry.timestamp) continue;
-        const t = Date.parse(entry.timestamp);
-        if (Number.isNaN(t)) continue;
-        return t;
-      } catch {
-        continue;
-      }
-    }
-    return null;
-  }
-
-  private detectTtlSeconds(lines: string[]): number | null {
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i]?.trim();
-      if (!line) continue;
-      try {
-        const entry = JSON.parse(line) as TranscriptEntry;
-        const role = entry.type || entry.message?.role || entry.message?.type;
-        if (role !== "assistant") continue;
-        const cc = entry.message?.usage?.cache_creation;
-        if (!cc) continue;
-        if ((cc.ephemeral_1h_input_tokens ?? 0) > 0) return 3600;
-        if ((cc.ephemeral_5m_input_tokens ?? 0) > 0) return 300;
-      } catch {
-        continue;
-      }
-    }
-    return null;
   }
 
   private async fileMtime(path: string): Promise<number | null> {

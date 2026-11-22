@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { existsSync, createReadStream } from "node:fs";
 import { join, posix } from "node:path";
 import { homedir } from "node:os";
@@ -100,7 +100,9 @@ export async function findProjectPaths(
 
     if (existsSync(projectsDir)) {
       try {
-        const entries = await readdir(projectsDir, { withFileTypes: true });
+        const entries = await readdir(projectsDir, {
+          withFileTypes: true,
+        });
 
         for (const entry of entries) {
           if (entry.isDirectory()) {
@@ -133,6 +135,37 @@ export async function findTranscriptFile(
   return null;
 }
 
+const FIRST_LINE_MAX_BYTES = 64 * 1024;
+
+/**
+ * The sessionId of a transcript's first line. A first line longer than the
+ * 64 KB read (a Task prompt with pasted content) arrives cut off and is not
+ * valid JSON; Claude Code writes sessionId near the start of every line, so
+ * the cut-off prefix still carries it.
+ */
+function firstLineSessionId(firstLine: string): string | undefined {
+  try {
+    const parsed = JSON.parse(firstLine);
+    return typeof parsed.sessionId === "string" ? parsed.sessionId : undefined;
+  } catch {
+    return /"sessionId"\s*:\s*"([^"]+)"/.exec(firstLine)?.[1];
+  }
+}
+
+/** Reads only the first line of a file (bounded to the first 64 KB). */
+async function readFirstLine(filePath: string): Promise<string> {
+  const handle = await open(filePath, "r");
+  try {
+    const buf = Buffer.alloc(FIRST_LINE_MAX_BYTES);
+    const { bytesRead } = await handle.read(buf, 0, FIRST_LINE_MAX_BYTES, 0);
+    const newline = buf.indexOf(0x0a);
+    const end = newline === -1 || newline >= bytesRead ? bytesRead : newline;
+    return buf.toString("utf8", 0, end);
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function findAgentTranscripts(
   sessionId: string,
   projectPath: string,
@@ -150,13 +183,9 @@ export async function findAgentTranscripts(
     for (const fileName of agentFileNames) {
       const filePath = posix.join(subagentsDir, fileName);
       try {
-        const content = await readFile(filePath, "utf-8");
-        const firstLine = content.split("\n")[0];
-        if (firstLine) {
-          const parsed = JSON.parse(firstLine);
-          if (parsed.sessionId === sessionId) {
-            agentFiles.push(filePath);
-          }
+        const firstLine = await readFirstLine(filePath);
+        if (firstLine && firstLineSessionId(firstLine) === sessionId) {
+          agentFiles.push(filePath);
         }
       } catch {
         debug(`Failed to check agent file ${filePath}`);
@@ -295,34 +324,40 @@ export async function parseJsonlFile(filePath: string): Promise<ParsedEntry[]> {
   }
 }
 
+/**
+ * Parses one JSONL line into a ParsedEntry. Returns null for blank lines,
+ * lines that are not valid JSON and records without a timestamp.
+ */
+function parseJsonlLine(line: string): ParsedEntry | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  try {
+    const raw = JSON.parse(trimmed);
+    if (!raw.timestamp) return null;
+
+    return {
+      timestamp: new Date(raw.timestamp),
+      message: raw.message,
+      costUSD: typeof raw.costUSD === "number" ? raw.costUSD : undefined,
+      isSidechain: raw.isSidechain === true,
+      raw,
+    };
+  } catch (parseError) {
+    debug(`Failed to parse JSONL line: ${parseError}`);
+    return null;
+  }
+}
+
 async function parseJsonlFileInMemory(
   filePath: string,
 ): Promise<ParsedEntry[]> {
   const content = await readFile(filePath, "utf-8");
-  const lines = content
-    .trim()
-    .split("\n")
-    .filter((line) => line.trim());
   const entries: ParsedEntry[] = [];
 
-  for (const line of lines) {
-    try {
-      const raw = JSON.parse(line);
-      if (!raw.timestamp) continue;
-
-      const entry: ParsedEntry = {
-        timestamp: new Date(raw.timestamp),
-        message: raw.message,
-        costUSD: typeof raw.costUSD === "number" ? raw.costUSD : undefined,
-        isSidechain: raw.isSidechain === true,
-        raw,
-      };
-
-      entries.push(entry);
-    } catch (parseError) {
-      debug(`Failed to parse JSONL line: ${parseError}`);
-      continue;
-    }
+  for (const line of content.split("\n")) {
+    const entry = parseJsonlLine(line);
+    if (entry) entries.push(entry);
   }
 
   return entries;
@@ -340,25 +375,8 @@ async function parseJsonlFileStreaming(
     });
 
     rl.on("line", (line) => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) return;
-
-      try {
-        const raw = JSON.parse(trimmedLine);
-        if (!raw.timestamp) return;
-
-        const entry: ParsedEntry = {
-          timestamp: new Date(raw.timestamp),
-          message: raw.message,
-          costUSD: typeof raw.costUSD === "number" ? raw.costUSD : undefined,
-          isSidechain: raw.isSidechain === true,
-          raw,
-        };
-
-        entries.push(entry);
-      } catch (parseError) {
-        debug(`Failed to parse JSONL line: ${parseError}`);
-      }
+      const entry = parseJsonlLine(line);
+      if (entry) entries.push(entry);
     });
 
     rl.on("close", () => {
@@ -375,6 +393,53 @@ async function parseJsonlFileStreaming(
       reject(error);
     });
   });
+}
+
+export interface IncrementalParseResult {
+  entries: ParsedEntry[];
+  endOffset: number;
+}
+
+/**
+ * Incremental reader for append-only JSONL files.
+ *
+ * Reads from byte `startOffset` to EOF and parses only complete lines (those
+ * terminated by "\n"). `endOffset` is the byte offset just after the last
+ * consumed newline, so pass it back as the next `startOffset`: a partial
+ * trailing line (Claude Code may be mid-write) is left unconsumed and is
+ * re-read once it is complete. Offsets are bytes, never characters, so
+ * multi-byte UTF-8 does not shift them. The read buffer stays bounded by the
+ * stream chunk size plus one line, but every parsed entry of the range is
+ * returned at once, so a first read of a large file from offset 0 holds all
+ * of its entries in memory. When nothing complete is found,
+ * `endOffset === startOffset`. Rejects on I/O errors (for example a missing
+ * file); callers decide how to degrade.
+ */
+export async function parseJsonlFileFrom(
+  filePath: string,
+  startOffset = 0,
+): Promise<IncrementalParseResult> {
+  const entries: ParsedEntry[] = [];
+  let consumed = 0;
+  let pending: Buffer = Buffer.alloc(0);
+
+  for await (const chunk of createReadStream(filePath, {
+    start: startOffset,
+  })) {
+    const buf = pending.length ? Buffer.concat([pending, chunk]) : chunk;
+    let lineStart = 0;
+    let newline = buf.indexOf(0x0a, lineStart);
+    while (newline !== -1) {
+      const entry = parseJsonlLine(buf.toString("utf8", lineStart, newline));
+      if (entry) entries.push(entry);
+      lineStart = newline + 1;
+      newline = buf.indexOf(0x0a, lineStart);
+    }
+    consumed += lineStart;
+    pending = buf.subarray(lineStart);
+  }
+
+  return { entries, endOffset: startOffset + consumed };
 }
 
 type FileStat = { filePath: string; mtime: Date; size: number };

@@ -31,6 +31,18 @@ const USAGE_DOCUMENT_TMP_PATTERN = /^[\w.-]+\.json\.(\d+)\.tmp$/;
 // usage cache dir through path.join.
 const USAGE_DOCUMENT_NAME_PATTERN = /^[\w-]+$/;
 
+// Per-session or per-transcript usage documents: one is created per session
+// and nothing else deletes them, so pruneSessionDocuments ages them out.
+export const SESSION_TOTALS_DOCUMENT_PREFIX = "session-totals-";
+export const CACHE_TIMER_DOCUMENT_PREFIX = "cache-timer-";
+export const METRICS_DOCUMENT_PREFIX = "metrics-state-";
+const SESSION_DOCUMENT_PATTERN = new RegExp(
+  `^(?:${SESSION_TOTALS_DOCUMENT_PREFIX}|${CACHE_TIMER_DOCUMENT_PREFIX}|${METRICS_DOCUMENT_PREFIX})[\\w-]+\\.json$`,
+);
+export const SESSION_DOCUMENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const SESSION_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const SESSION_PRUNE_MARKER = ".session-prune-marker";
+
 function assertValidDocumentName(name: string): void {
   if (!USAGE_DOCUMENT_NAME_PATTERN.test(name)) {
     throw new Error(`Invalid usage document name: ${name}`);
@@ -336,6 +348,44 @@ export class CacheManager {
       if (error?.code !== "ENOENT") {
         debug(`Failed to remove usage document ${name}: ${error?.message}`);
       }
+    }
+  }
+
+  /**
+   * Deletes session-scoped usage documents untouched for over a week. Runs at
+   * most once per hour across processes (claimed through the mtime of a marker
+   * file) and never throws. Resolves the number of documents deleted.
+   */
+  static async pruneSessionDocuments(): Promise<number> {
+    try {
+      await this.ensureCacheDirectories();
+      const marker = path.join(this.USAGE_CACHE_DIR, SESSION_PRUNE_MARKER);
+      const now = Date.now();
+      try {
+        const { mtimeMs } = await fs.promises.stat(marker);
+        if (now - mtimeMs < SESSION_PRUNE_INTERVAL_MS) return 0;
+      } catch {
+        // No marker yet: first run.
+      }
+      await fs.promises.writeFile(marker, String(now), "utf-8");
+
+      let removed = 0;
+      for (const entry of await fs.promises.readdir(this.USAGE_CACHE_DIR)) {
+        if (!SESSION_DOCUMENT_PATTERN.test(entry)) continue;
+        const file = path.join(this.USAGE_CACHE_DIR, entry);
+        try {
+          const { mtimeMs } = await fs.promises.stat(file);
+          if (now - mtimeMs <= SESSION_DOCUMENT_MAX_AGE_MS) continue;
+          await fs.promises.unlink(file);
+          removed++;
+        } catch (error: any) {
+          debug(`Failed to prune ${entry}: ${error?.message}`);
+        }
+      }
+      return removed;
+    } catch (error: any) {
+      debug(`Session document prune failed: ${error?.message}`);
+      return 0;
     }
   }
 

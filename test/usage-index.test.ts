@@ -213,7 +213,12 @@ describe("loadIndexedUsageEntries", () => {
     models: string[];
     files: Record<
       string,
-      { mtimeMs: number; size: number; foldedUpToMs: number }
+      {
+        mtimeMs: number;
+        size: number;
+        foldedUpToMs: number;
+        parsedOffset?: number;
+      }
     >;
     hot: Record<string, Array<[number, ...unknown[]]>>;
     buckets: Record<string, number[]>;
@@ -1203,6 +1208,254 @@ describe("loadIndexedUsageEntries", () => {
 
       expect(entries.map((e) => e.hash)).toEqual(["msg-bad:req-bad"]);
       expect(readIndex().version).toBe(2);
+    });
+  });
+  describe("incremental parsing", () => {
+    const defaultBudgetMs = usageIndexInternals.parseBudgetMs;
+    let now: number;
+    let since: Date;
+
+    beforeEach(() => {
+      now = Date.now();
+      since = new Date(now - DAY_MS);
+    });
+
+    afterEach(() => {
+      usageIndexInternals.parseBudgetMs = defaultBudgetMs;
+    });
+
+    function lineFor(
+      id: string,
+      timestampMs: number,
+      inputTokens = 10,
+    ): string {
+      return usageLine({
+        timestamp: new Date(timestampMs).toISOString(),
+        messageId: `m-${id}`,
+        requestId: `r-${id}`,
+        inputTokens,
+      });
+    }
+
+    function hotHashes(filePath: string): unknown[] {
+      return (readIndex().hot[filePath] ?? []).map((entry) => entry[7]);
+    }
+
+    /** Rewrites a record the way a build from before parsedOffset left it. */
+    function makeLegacyRecord(filePath: string, size: number): void {
+      const index = readIndex();
+      const record = index.files[filePath]!;
+      delete record.parsedOffset;
+      record.size = size;
+      writeFileSync(indexPath(), JSON.stringify(index));
+    }
+
+    it("records the parsed offset and matches a from-scratch build after appends", async () => {
+      const fileA = join(projectDir, "session-inc-a.jsonl");
+      const fileB = join(projectDir, "session-inc-b.jsonl");
+      writeFileSync(fileA, lineFor("a1", now - 50 * 60_000) + "\n");
+      writeFileSync(fileB, lineFor("b1", now - 49 * 60_000) + "\n");
+      await loadFresh(since);
+      expect(readIndex().files[fileA]!.parsedOffset).toBe(statSync(fileA).size);
+
+      const parseSpy = jest.spyOn(usageIndexInternals, "parseFrom");
+      for (let round = 2; round <= 4; round++) {
+        const sizeBefore = statSync(fileA).size;
+        const tsA = now - (45 - round) * 60_000;
+        const tsB = now - (35 - round) * 60_000;
+        appendFileSync(fileA, lineFor(`a${round}`, tsA, round) + "\n");
+        appendFileSync(
+          fileB,
+          lineFor(`b${round}`, tsB) +
+            "\n" +
+            lineFor(`b${round}`, tsB + 500) +
+            "\n",
+        );
+        parseSpy.mockClear();
+        await loadFresh(since);
+        expect(parseSpy).toHaveBeenCalledWith(fileA, sizeBefore);
+      }
+      parseSpy.mockRestore();
+
+      const incremental = await loadFresh(since);
+      expect(hotHashes(fileB)).toHaveLength(4);
+
+      rmSync(join(cacheDir, "usage"), { recursive: true, force: true });
+      const scratch = await loadFresh(since);
+
+      expect(incremental).toHaveLength(8);
+      expect(incremental.map((e) => e.hash).sort()).toEqual(
+        scratch.map((e) => e.hash).sort(),
+      );
+      const actual = sumEntries(incremental);
+      const expected = sumEntries(scratch);
+      expect(actual.inputTokens).toBe(expected.inputTokens);
+      expect(actual.outputTokens).toBe(expected.outputTokens);
+      expect(actual.costUSD).toBeCloseTo(expected.costUSD, 10);
+    });
+
+    it("stores a streaming duplicate split across two chunks once", async () => {
+      const sessionFile = join(projectDir, "session-inc-dup.jsonl");
+      writeFileSync(sessionFile, lineFor("dup", now - 60_000) + "\n");
+      await loadFresh(since);
+
+      appendFileSync(
+        sessionFile,
+        lineFor("dup", now - 59_000) +
+          "\n" +
+          lineFor("next", now - 58_000) +
+          "\n",
+      );
+      const entries = await loadFresh(since);
+
+      // The query time dedupe would hide a stored duplicate, so the stored
+      // hot entries are what proves the chunk dedupe.
+      expect(hotHashes(sessionFile)).toEqual(["m-dup:r-dup", "m-next:r-next"]);
+      expect(readIndex().hot[sessionFile]![0]![0]).toBe(now - 60_000);
+      expect(entries.map((e) => e.hash).sort()).toEqual([
+        "m-dup:r-dup",
+        "m-next:r-next",
+      ]);
+    });
+
+    it("resumes a legacy record from the start of the line its size falls in", async () => {
+      const sessionFile = join(projectDir, "session-inc-legacy-mid.jsonl");
+      const first = lineFor("l1", now - 60_000);
+      const second = lineFor("l2", now - 50_000);
+      writeFileSync(sessionFile, first + "\n" + second.slice(0, 10));
+      await loadFresh(since);
+      expect(hotHashes(sessionFile)).toEqual(["m-l1:r-l1"]);
+      makeLegacyRecord(sessionFile, statSync(sessionFile).size);
+
+      appendFileSync(
+        sessionFile,
+        second.slice(10) + "\n" + lineFor("l3", now - 40_000) + "\n",
+      );
+      const parseSpy = jest.spyOn(usageIndexInternals, "parseFrom");
+      const entries = await loadFresh(since);
+
+      expect(parseSpy).toHaveBeenCalledTimes(1);
+      expect(parseSpy).toHaveBeenCalledWith(
+        sessionFile,
+        Buffer.byteLength(first) + 1,
+      );
+      expect(hotHashes(sessionFile)).toEqual([
+        "m-l1:r-l1",
+        "m-l2:r-l2",
+        "m-l3:r-l3",
+      ]);
+      expect(entries).toHaveLength(3);
+      expect(readIndex().files[sessionFile]!.parsedOffset).toBe(
+        statSync(sessionFile).size,
+      );
+    });
+
+    it("drops the overlap when a legacy record's hot entries reach past its size", async () => {
+      const sessionFile = join(projectDir, "session-inc-legacy-overlap.jsonl");
+      const first = lineFor("o1", now - 60_000);
+      writeFileSync(
+        sessionFile,
+        first + "\n" + lineFor("o2", now - 50_000) + "\n",
+      );
+      await loadFresh(since);
+      // The old build's stat saw only the first line, its parse saw both.
+      makeLegacyRecord(sessionFile, Buffer.byteLength(first) + 1);
+
+      appendFileSync(sessionFile, lineFor("o3", now - 40_000) + "\n");
+      const parseSpy = jest.spyOn(usageIndexInternals, "parseFrom");
+      await loadFresh(since);
+
+      expect(parseSpy).toHaveBeenCalledWith(
+        sessionFile,
+        Buffer.byteLength(first) + 1,
+      );
+      expect(hotHashes(sessionFile)).toEqual([
+        "m-o1:r-o1",
+        "m-o2:r-o2",
+        "m-o3:r-o3",
+      ]);
+    });
+
+    it("rebuilds a file that shrank below its parsed offset", async () => {
+      const sessionFile = join(projectDir, "session-inc-truncated.jsonl");
+      writeFileSync(
+        sessionFile,
+        ["t1", "t2", "t3"]
+          .map((id, i) => lineFor(id, now - (60 - i) * 60_000))
+          .join("\n") + "\n",
+      );
+      await loadFresh(since);
+      expect(hotHashes(sessionFile)).toHaveLength(3);
+
+      writeFileSync(sessionFile, lineFor("t9", now - 30_000) + "\n");
+      const bumped = new Date(now + 5_000);
+      utimesSync(sessionFile, bumped, bumped);
+      const entries = await loadFresh(since);
+
+      expect(hotHashes(sessionFile)).toEqual(["m-t9:r-t9"]);
+      expect(entries.map((e) => e.hash)).toEqual(["m-t9:r-t9"]);
+      expect(readIndex().files[sessionFile]!.parsedOffset).toBe(
+        statSync(sessionFile).size,
+      );
+    });
+
+    it("persists partial progress of an over-budget full sweep without advancing its timestamp", async () => {
+      const files = ["x", "y", "z"].map((id) =>
+        join(projectDir, `session-inc-budget-${id}.jsonl`),
+      );
+      files.forEach((f, i) =>
+        writeFileSync(f, lineFor(`${i}-1`, now - 50 * 60_000 + i) + "\n"),
+      );
+      await loadFresh(since);
+      files.forEach((f, i) =>
+        appendFileSync(f, lineFor(`${i}-2`, now - 20 * 60_000 + i) + "\n"),
+      );
+      ageLastFullSweep();
+      const agedSweepMs = readIndex().lastFullSweepMs;
+
+      usageIndexInternals.parseBudgetMs = 0;
+      await loadFresh(since);
+
+      const partial = readIndex();
+      expect(partial.lastFullSweepMs).toBe(agedSweepMs);
+      const caughtUp = files.filter(
+        (f) => partial.files[f]!.size === statSync(f).size,
+      );
+      expect(caughtUp).toHaveLength(1);
+
+      usageIndexInternals.parseBudgetMs = defaultBudgetMs;
+      const entries = await loadFresh(since);
+
+      const done = readIndex();
+      expect(done.lastFullSweepMs).toBeGreaterThan(agedSweepMs);
+      for (const f of files) {
+        expect(done.files[f]!.size).toBe(statSync(f).size);
+        expect(done.hot[f]).toHaveLength(2);
+      }
+      expect(entries).toHaveLength(6);
+    });
+
+    it("builds a cold index one file per holder when the budget is exhausted", async () => {
+      const files = ["p", "q", "r"].map((id) =>
+        join(projectDir, `session-inc-cold-${id}.jsonl`),
+      );
+      files.forEach((f, i) =>
+        writeFileSync(f, lineFor(`cold-${i}`, now - 10 * 60_000 + i) + "\n"),
+      );
+      usageIndexInternals.parseBudgetMs = 0;
+
+      await loadFresh(since);
+      expect(Object.keys(readIndex().files)).toHaveLength(1);
+      expect(readIndex().lastFullSweepMs).toBe(0);
+
+      await loadFresh(since);
+      expect(Object.keys(readIndex().files)).toHaveLength(2);
+      expect(readIndex().lastFullSweepMs).toBe(0);
+
+      const entries = await loadFresh(since);
+      expect(Object.keys(readIndex().files)).toHaveLength(3);
+      expect(readIndex().lastFullSweepMs).toBeGreaterThan(0);
+      expect(entries).toHaveLength(3);
     });
   });
 });

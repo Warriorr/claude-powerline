@@ -67,6 +67,12 @@ export interface UsageFileRecord {
   size: number;
   /** Newest timestamp already folded for this file; re-parses skip that prefix. */
   foldedUpToMs: number;
+  /**
+   * Byte just after the last complete line parsed into the hot entries; the
+   * next parse resumes here. Absent on records written before incremental
+   * parsing, which resume from their size instead (see usageIndex.ts).
+   */
+  parsedOffset?: number;
 }
 
 export interface UsageIndex {
