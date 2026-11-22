@@ -1,3 +1,10 @@
+## [1.22.3](https://github.com/Warriorr/claude-powerline/compare/v1.22.2...v1.22.3) (2026-11-22)
+
+### Performance Improvements
+
+* bound every per-render parse so large files bootstrap across renders ([0673e51](https://github.com/Warriorr/claude-powerline/commit/0673e5117df80cfc619aad91bb3f26950dc21b6b))
+* parse only appended transcript bytes on each render ([e63f171](https://github.com/Warriorr/claude-powerline/commit/e63f1716602c741beb89edc97406d46d17c0783c))
+
 ## [1.22.2](https://github.com/Warriorr/claude-powerline/compare/v1.22.1...v1.22.2) (2026-11-02)
 
 ### Bug Fixes
